@@ -1,7 +1,7 @@
 # This file is used to define the retriever class.
 # If you want to modify the retriever, just inherit the Retriever class and override the methods.
 
-from typing import List, Dict, Optional, Union
+from typing import List, Dict, Optional, Union, Tuple
 from sentence_transformers import SentenceTransformer
 import numpy as np
 import vllm
@@ -14,10 +14,13 @@ class Retriever:
     def index(self, data: List):
         raise NotImplementedError("Subclasses must implement this method")
 
-    def retrieve(self, query: str, top_k: int) -> List[str]:
+    def retrieve(self, query: str, top_k: int) -> Tuple[List[str], List[Tuple[int, float]]]:
         raise NotImplementedError("Subclasses must implement this method")
 
     def load_model(self):
+        raise NotImplementedError("Subclasses must implement this method")
+
+    def reset(self):
         raise NotImplementedError("Subclasses must implement this method")
 
 
@@ -36,6 +39,12 @@ class BM25Retriever(Retriever):
     def load_model(self):
         # BM25不需要加载模型，这里返回None
         return None
+
+    def reset(self):
+        self.documents = []
+        self.inverted_index = {}
+        self.doc_freq = {}
+        self.avgdl = 0
 
     def index(self, data: List[str]):
         # data: List of documents (str)
@@ -57,7 +66,7 @@ class BM25Retriever(Retriever):
         self.avgdl = sum(doc_lens) / len(doc_lens) if doc_lens else 0
         self.doc_lens = doc_lens
 
-    def retrieve(self, query: str, top_k: int) -> List[str]:
+    def retrieve(self, query: str, top_k: int) -> Tuple[List[str], List[Tuple[int, float]]]:
         # 计算BM25分数，返回top_k个文档
         import math
         query_terms = query.split()
@@ -76,12 +85,17 @@ class BM25Retriever(Retriever):
         # 获取分数最高的top_k个文档
         ranked = sorted(enumerate(scores), key=lambda x: x[1], reverse=True)
         top_indices = [idx for idx, _ in ranked[:top_k]]
-        return [self.documents[idx] for idx in top_indices]
+        return [self.documents[idx] for idx in top_indices], ranked
 
 class SentenceTransformerRetriever(Retriever):
     def __init__(self, config: Dict):
         super().__init__()
         self.model = self.load_model()
+        self.embeddings = []
+        self.data = []
+        self.faiss_index = None
+    
+    def reset(self):
         self.embeddings = []
         self.data = []
         self.faiss_index = None
@@ -95,17 +109,22 @@ class SentenceTransformerRetriever(Retriever):
         self.faiss_index = IndexFlatL2(self.embeddings.shape[1])
         self.faiss_index.add(self.embeddings)
 
-    def retrieve(self, query: str, top_k: int) -> List[str]:
+    def retrieve(self, query: str, top_k: int) -> Tuple[List[str], List[Tuple[int, float]]]:
         query_embedding = self.model.encode(query)
         scores = self.model.similarity(query_embedding, self.embeddings)
         top_indices = np.argsort(scores)[::-1][:top_k]
-        return [self.data[idx] for idx in top_indices]
+        return [self.data[idx] for idx in top_indices], [(idx, score) for idx, score in enumerate(scores)]
 
 class vLLMRetriever(Retriever):
     # you should launch the vLLM server first.
     def __init__(self, url:str, config:Dict):
         super().__init__()
         self.client = vllm.Client(url=url)
+        self.embeddings = []
+        self.data = []
+        self.faiss_index = None
+    
+    def reset(self):
         self.embeddings = []
         self.data = []
         self.faiss_index = None
@@ -124,13 +143,10 @@ class vLLMRetriever(Retriever):
         self.faiss_index = IndexFlatL2(self.embeddings.shape[1])
         self.faiss_index.add(self.embeddings)
     
-    def retrieve(self, query: str, top_k: int) -> List[str]:
+    def retrieve(self, query: str, top_k: int) -> Tuple[List[str], List[Tuple[int, float]]]:
         query_embedding = self.call_model(query)[0]
         distances, indices = self.faiss_index.search(query_embedding, top_k)
-        return [self.data[idx] for idx in indices[0]]
-
-
-
+        return [self.data[idx] for idx in indices[0]], [(idx, score) for idx, score in enumerate(distances[0])]
 
 
 def get_retriever(distractor_strategy: str, config: Dict = None) -> Optional[Retriever]:
@@ -147,7 +163,7 @@ def get_retriever(distractor_strategy: str, config: Dict = None) -> Optional[Ret
     if distractor_strategy == "random":
         return None
     elif distractor_strategy == "retriever":
-        # 默认使用BM25Retriever，也可以配置为其他retriever
+        # default to use BM25Retriever, can be configured to other retriever
         retriever_type = config.get("retriever_type", "bm25") if config else "bm25"
         if retriever_type == "bm25":
             return BM25Retriever(config or {})
