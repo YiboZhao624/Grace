@@ -33,10 +33,7 @@ from chunker import *
 from retriever import *
 import numpy as np
 from tqdm import tqdm
-import retriever
 from utils import load_raw_qasper_data
-from chunker import get_chunker
-from retriever import get_retriever
 from prompts import Prompt_templates
 from configs import DataGeneratorConfig
 
