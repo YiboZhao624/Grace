@@ -90,18 +90,17 @@ class QASPERDataGenerator:
     # 3. QASPERRetrieverRerankerGenerator: using the retriever and reranker.
     # 4. QASPERRandomRerankerGenerator: using the retriever and reranker and random strategy.
     # 5. QASPEROracleDataGenerator: using the ground truth evidence.
-    def __init__(self, chunker: Chunker, retriever: Union[Retriever, None], paper_path: str, qa_path: str, config: DataGeneratorConfig):
+    def __init__(self, chunker: Chunker, retriever: Union[Retriever, None], config: DataGeneratorConfig):
         self.config = config
         self.chunker = chunker
         self.retriever = retriever
-        self.paper_path = paper_path
-        self.qa_path = qa_path
+        self.data_folder = config.data_folder
         self.paper_data = None
         self.QA_data = None
         self.load_data()
 
     def load_data(self) -> Tuple[Dict, Dict]:
-        paper_data, QA_data = load_raw_qasper_data(self.paper_path, self.qa_path)
+        paper_data, QA_data = load_raw_qasper_data(self.data_folder, self.config.split)
         self.paper_data = paper_data
         self.extract_full_text()
         for paper_id, paper_data in self.paper_data.items():
@@ -197,7 +196,7 @@ class QASPERDataGenerator:
         entry["extra_info"]["paper_id"] = qa_data["paper_id"]
         entry["extra_info"]["question_id"] = qa_data.get("question_id", "")
         entry["extra_info"]["question"] = qa_data.get("question", "")
-        entry["extra_info"]["split"] = self.qa_path
+        entry["extra_info"]["split"] = self.config.split
         entry["extra_info"]["references"] = qa_data.get("references", [])
         return entry
     
@@ -214,16 +213,12 @@ class QASPERDataGenerator:
 
 
 class QASPERRetrieverDataGenerator(QASPERDataGenerator):
-    def __init__(self, chunker: Chunker, retriever: Retriever, paper_path: str, qa_path: str, config: DataGeneratorConfig):
-        super().__init__(chunker, retriever, paper_path, qa_path, config)
+    def __init__(self, chunker: Chunker, retriever: Retriever, config: DataGeneratorConfig):
+        super().__init__(chunker, retriever, config)
         self.retriever = retriever
         self.chunker = chunker
-        self.paper_path = paper_path
-        self.qa_path = qa_path
         self.config = config
-        self.QA_data: List[Dict] = []
-        self.paper_data: Dict[str, Dict] = {}
-        self.load_data()
+        # Note: self.QA_data and self.paper_data are already initialized by parent class
 
     def generate(self) -> List[Dict]:
         # 0. about the data: paper is well chunked, retriever is initialized.
@@ -242,7 +237,7 @@ class QASPERRetrieverDataGenerator(QASPERDataGenerator):
 
         examples = []
         prev_paper_id = None
-        for qa_data in self.QA_data:
+        for qa_data in tqdm(self.QA_data, desc="Generating data"):
             # initialize the retriever.
             if prev_paper_id != qa_data["paper_id"]:
                 self.retriever.reset()
