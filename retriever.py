@@ -6,6 +6,7 @@ from sentence_transformers import SentenceTransformer
 import numpy as np
 import vllm
 from faiss import IndexFlatL2
+from configs import RetrieverConfig
 
 class Retriever:
     def __init__(self):
@@ -25,7 +26,7 @@ class Retriever:
 
 
 class BM25Retriever(Retriever):
-    def __init__(self, config: Dict):
+    def __init__(self, config: RetrieverConfig):
         # 调用父类构造函数
         super().__init__()
         # 初始化文档和倒排索引
@@ -33,8 +34,8 @@ class BM25Retriever(Retriever):
         self.inverted_index = {}
         self.doc_freq = {}
         self.avgdl = 0
-        self.k1 = config.get("k1", 1.5)
-        self.b = config.get("b", 0.75)
+        self.k1 = config.k1
+        self.b = config.b
 
     def load_model(self):
         # BM25不需要加载模型，这里返回None
@@ -88,20 +89,21 @@ class BM25Retriever(Retriever):
         return [self.documents[idx] for idx in top_indices], ranked
 
 class SentenceTransformerRetriever(Retriever):
-    def __init__(self, config: Dict):
+    def __init__(self, config: RetrieverConfig):
         super().__init__()
         self.model = self.load_model()
         self.embeddings = []
         self.data = []
         self.faiss_index = None
-    
+        self.model_name = config.model_name
+
     def reset(self):
         self.embeddings = []
         self.data = []
         self.faiss_index = None
 
     def load_model(self):
-        return SentenceTransformer(self.config.get("model_name", "all-MiniLM-L6-v2"))
+        return SentenceTransformer(self.model_name)
 
     def index(self, data: List[str]):
         self.embeddings = self.model.encode(data)
@@ -117,12 +119,13 @@ class SentenceTransformerRetriever(Retriever):
 
 class vLLMRetriever(Retriever):
     # you should launch the vLLM server first.
-    def __init__(self, url:str, config:Dict):
+    def __init__(self, url:str, config:RetrieverConfig):
         super().__init__()
         self.client = vllm.Client(url=url)
         self.embeddings = []
         self.data = []
         self.faiss_index = None
+        self.url = url
     
     def reset(self):
         self.embeddings = []
@@ -149,7 +152,7 @@ class vLLMRetriever(Retriever):
         return [self.data[idx] for idx in indices[0]], [(idx, score) for idx, score in enumerate(distances[0])]
 
 
-def get_retriever(distractor_strategy: str, config: Dict = None) -> Optional[Retriever]:
+def get_retriever(config: Dict = None) -> Optional[Retriever]:
     """
     get retriever instance according to the distractor strategy
     
@@ -160,18 +163,13 @@ def get_retriever(distractor_strategy: str, config: Dict = None) -> Optional[Ret
     Returns:
         Retriever instance or None
     """
-    if distractor_strategy == "random":
-        return None
-    elif distractor_strategy == "retriever":
-        # default to use BM25Retriever, can be configured to other retriever
-        retriever_type = config.get("retriever_type", "bm25") if config else "bm25"
-        if retriever_type == "bm25":
-            return BM25Retriever(config or {})
-        elif retriever_type == "sentence_transformer":
-            return SentenceTransformerRetriever(config or {})
-        elif retriever_type == "vllm":
-            return vLLMRetriever(config["url"], config or {})
-        else:
-            raise ValueError(f"Unknown retriever type: {retriever_type}")
+    # default to use BM25Retriever, can be configured to other retriever
+    retriever_type = config.retriever_type
+    if retriever_type == "bm25":
+        return BM25Retriever(config)
+    elif retriever_type == "sentence_transformer":
+        return SentenceTransformerRetriever(config)
+    elif retriever_type == "vllm":
+        return vLLMRetriever(config.url, config)
     else:
-        raise ValueError(f"Unknown distractor strategy: {distractor_strategy}")
+        raise ValueError(f"Unknown retriever type: {retriever_type}")
