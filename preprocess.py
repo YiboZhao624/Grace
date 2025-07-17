@@ -45,6 +45,7 @@ def process_qasper_data(data:dict):
                     evidence = answer_info["evidence"]
                     references.append({"answer": answer, "evidence": evidence, "type": answer_type})
             processed_one_entry_QA["references"] = references
+            processed_one_entry_QA["data_source"] = "QASPER"
             processed_QA_data.append(processed_one_entry_QA)
     return processed_QA_data, processed_paper_data
 
