@@ -7,6 +7,23 @@ import random
 random.seed(42)
 
 def process_qasper_data(data:dict):
+    '''
+    data: the original data loaded from the json file.
+    return: 
+    processed QA data: a list of dictionaries, each dictionary contains the following keys:
+    - question_id: str, the question id.
+    - paper_id: str, the related paper id.
+    - question: str, the question.
+    - data_source: str, the data source.
+    - references: a list of dictionaries, each dictionary contains the following keys:
+        - answer: str, the answer.
+        - evidence: a list of strings, the evidence.
+        - type: str, the type of the answer.
+    processed paper data: a dictionary, each key is the paper id, and the value is a dictionary contains the following keys:
+        - title: str, the title of the paper.
+        - abstract: str, the abstract of the paper.
+        - full_text: str, the full text of the paper.
+    '''
     processed_QA_data = []
     processed_paper_data = {}
     for paper_key, value in data.items():
