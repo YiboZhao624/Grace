@@ -90,7 +90,7 @@ class QASPERDataGenerator:
     # 3. QASPERRetrieverRerankerGenerator: using the retriever and reranker.
     # 4. QASPERRandomRerankerGenerator: using the retriever and reranker and random strategy.
     # 5. QASPEROracleDataGenerator: using the ground truth evidence.
-    def __init__(self, chunker: Chunker, retriever: Union[Retriever, None], paper_path: str, qa_path: str, config: Dict = None):
+    def __init__(self, chunker: Chunker, retriever: Union[Retriever, None], paper_path: str, qa_path: str, config: DataGeneratorConfig):
         self.config = config
         self.chunker = chunker
         self.retriever = retriever
@@ -180,7 +180,7 @@ class QASPERDataGenerator:
                 if len(evidence_words) > 0:
                     recall = len(evidence_words & chunk_words) / len(evidence_words)
                     precision = len(evidence_words & chunk_words) / len(chunk_words)
-                    if recall >= self.config.get("recall_threshold", 0.5) or precision >= self.config.get("precision_threshold", 0.5):
+                    if recall >= self.config.recall_threshold or precision >= self.config.precision_threshold:
                         evidence_chunk_ids.add(i)
         
         return list(evidence_chunk_ids)
