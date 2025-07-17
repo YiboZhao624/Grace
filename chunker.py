@@ -76,12 +76,12 @@ class TokenChunker(Chunker):
         self.overlap = config.overlap
 
     def chunk(self, document: str) -> List[str]:
-        token_ids = self.tokenizer.tokenize(document)
+        token_ids = self.tokenizer.encode(document, add_special_tokens=False)
         chunks = []
-        current_chunk = []
         for i in range(0, len(token_ids), self.length - self.overlap):
-            chunks.append(token_ids[i:i+self.length])
-        chunks = [self.tokenizer.decode(chunk) for chunk in chunks]
+            chunk_token_ids = token_ids[i:i+self.length]
+            chunks.append(chunk_token_ids)
+        chunks = [self.tokenizer.decode(chunk, skip_special_tokens=True) for chunk in chunks]
         return chunks
 
 def get_chunker(config: ChunkerConfig) -> Chunker:
