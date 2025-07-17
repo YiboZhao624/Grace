@@ -33,50 +33,28 @@ from chunker import *
 from retriever import *
 import numpy as np
 from tqdm import tqdm
+import retriever
 from utils import load_raw_qasper_data
 from chunker import get_chunker
 from retriever import get_retriever
-
-def extract_full_text(paper_data: Dict) -> str:
-    """
-    从paper数据中提取完整文本
-    
-    Args:
-        paper_data: 单个paper的数据
-    
-    Returns:
-        拼接后的完整文本
-    """
-    text_parts = []
-    
-    # 添加标题和摘要
-    if paper_data.get("title"):
-        text_parts.append(paper_data["title"])
-    if paper_data.get("abstract"):
-        text_parts.append(paper_data["abstract"])
-    
-    # 添加正文
-    if "full_text" in paper_data:
-        for section in paper_data["full_text"]:
-            if "paragraphs" in section:
-                for paragraph in section["paragraphs"]:
-                    if paragraph.strip():
-                        text_parts.append(paragraph.strip())
-    
-    return "\n\n".join(text_parts)
-
+from prompts import Prompt_templates
 
 def find_evidence_chunks(evidence_texts: List[str], chunks: List[str], threshold: float = 0.8) -> List[int]:
     """
-    找到包含evidence的chunk索引
+    find the chunk indices that contain the evidence.
     
     Args:
-        evidence_texts: ground truth evidence文本列表
-        chunks: 文档chunks列表
-        threshold: 匹配阈值
+        evidence_texts: the list of ground truth evidence texts.
+        chunks: the list of chunks.
+        threshold: the threshold for matching.
     
     Returns:
-        包含evidence的chunk索引列表
+        the list of chunk indices that contain the evidence.
+
+    Notes:
+        The recall threshold is used to filter out the larger chunks that contain a small part of the evidence, which does not contribute to the answer.
+        The precision is designed for smaller chunks that may cannot recall the whole evidence itself, but it is a part of the evidence.
+        This is designed for mitigating the impact of the fragmentary chunked evidence.
     """
     evidence_chunk_ids = set()
     
@@ -84,367 +62,236 @@ def find_evidence_chunks(evidence_texts: List[str], chunks: List[str], threshold
         if not evidence.strip():
             continue
             
-        # 简单的子串匹配
+        # simple substring matching
         for i, chunk in enumerate(chunks):
             if evidence.strip() in chunk or chunk in evidence.strip():
                 evidence_chunk_ids.add(i)
                 continue
             
-            # 计算词汇重叠率
+            # calculate the overlap rate of the words.
             evidence_words = set(evidence.lower().split())
             chunk_words = set(chunk.lower().split())
             
             if len(evidence_words) > 0:
-                overlap = len(evidence_words & chunk_words) / len(evidence_words)
-                if overlap >= threshold:
+                recall = len(evidence_words & chunk_words) / len(evidence_words)
+                precision = len(evidence_words & chunk_words) / len(chunk_words)
+                if recall >= threshold or precision >= threshold:
                     evidence_chunk_ids.add(i)
     
     return list(evidence_chunk_ids)
 
 
-def generate_random_distractors(chunks: List[str], evidence_chunk_ids: List[int], num_distractors: int) -> List[int]:
-    """
-    随机生成distractor chunk索引
-    
-    Args:
-        chunks: 所有chunks
-        evidence_chunk_ids: ground truth evidence chunk索引
-        num_distractors: 需要的distractor数量
-    
-    Returns:
-        distractor chunk索引列表
-    """
-    available_ids = [i for i in range(len(chunks)) if i not in evidence_chunk_ids]
-    return random.sample(available_ids, min(num_distractors, len(available_ids)))
 
 
-def generate_retriever_distractors(
-    retriever: Retriever, 
-    question: str, 
-    chunks: List[str], 
-    evidence_chunk_ids: List[int], 
-    top_k: int
-) -> List[int]:
-    """
-    使用retriever生成distractor chunk索引
-    
-    Args:
-        retriever: Retriever实例
-        question: 问题文本
-        chunks: 所有chunks
-        evidence_chunk_ids: ground truth evidence chunk索引
-        top_k: 总共需要的evidence数量
-    
-    Returns:
-        distractor chunk索引列表
-    """
-    # 检索top k+1个chunks
-    retrieved_chunks = retriever.retrieve(question, top_k + 1)
-    
-    # 找到检索结果对应的chunk索引
-    retrieved_indices = []
-    for retrieved_chunk in retrieved_chunks:
-        for i, chunk in enumerate(chunks):
-            if chunk == retrieved_chunk:
-                retrieved_indices.append(i)
-                break
-    
-    # 移除ground truth evidence chunks
-    distractor_indices = [idx for idx in retrieved_indices if idx not in evidence_chunk_ids]
-    
-    # 如果检索结果不包含ground truth，直接返回top k个
-    if not any(idx in evidence_chunk_ids for idx in retrieved_indices):
-        return distractor_indices[:top_k]
-    
-    # 否则返回除了ground truth之外的其他chunks
-    return distractor_indices
+class QASPERDataGenerator:
+    # this class is used to generate the training data for the QASPER dataset.
+    # it is a meta class that should be inherited by the specific data generator.
+    # the implemented generators include: 
+    # 1. QASPERRetrieverDataGenerator: using the retriever.
+    # 2. QASPERRandomDataGenerator: using the random strategy.
+    # 3. QASPERRetrieverRerankerGenerator: using the retriever and reranker.
+    # 4. QASPERRandomRerankerGenerator: using the retriever and reranker and random strategy.
+    # 5. QASPEROracleDataGenerator: using the ground truth evidence.
+    def __init__(self, chunker: Chunker, retriever: Union[Retriever, None], paper_path: str, qa_path: str, config: Dict = None):
+        self.config = config
+        self.chunker = chunker
+        self.retriever = retriever
+        self.paper_path = paper_path
+        self.qa_path = qa_path
+        self.paper_data = None
+        self.QA_data = None
+        self.load_data()
 
+    def load_data(self) -> Tuple[Dict, Dict]:
+        paper_data, QA_data = load_raw_qasper_data(self.paper_path, self.qa_path)
+        self.paper_data = paper_data
+        self.extract_full_text()
+        for paper_id, paper_data in self.paper_data.items():
+            chunks = self.chunk_paper(paper_id)
+            self.paper_data[paper_id]["chunks"] = chunks
+        self.QA_data = QA_data
 
-def create_training_example(
-    question: str,
-    answer: str,
-    evidence_chunks: List[str],
-    distractor_chunks: List[str],
-    generation_type: str,
-    paper_id: str,
-    question_id: str
-) -> Dict:
-    """
-    创建训练样本
-    
-    Args:
-        question: 问题文本
-        answer: 答案文本
-        evidence_chunks: evidence chunks列表
-        distractor_chunks: distractor chunks列表
-        generation_type: 数据生成类型
-        paper_id: paper ID
-        question_id: 问题ID
-    
-    Returns:
-        格式化的训练样本
-    """
-    # 简单的模板格式
-    all_chunks = evidence_chunks + distractor_chunks
-    random.shuffle(all_chunks)  # 随机打乱顺序
-    
-    context = "\n\n".join([f"[{i+1}] {chunk}" for i, chunk in enumerate(all_chunks)])
-    
-    example = {
-        "paper_id": paper_id,
-        "question_id": question_id,
-        "question": question,
-        "answer": answer,
-        "context": context,
-        "evidence_chunks": evidence_chunks,
-        "distractor_chunks": distractor_chunks,
-        "generation_type": generation_type,
-        "num_evidence": len(evidence_chunks),
-        "num_distractors": len(distractor_chunks)
-    }
-    
-    return example
+    def generate(self) -> List[Dict]:
+        raise NotImplementedError("You can't directly use the meta class. Subclasses must implement this method")
 
+    def chunk_paper(self, paper_id: str) -> List[str]:
+        """
+        chunk the paper data.
+        """
+        full_text = self.paper_data[paper_id]["full_text"]
+        chunks = self.chunker.chunk(full_text)
+        return chunks
 
-def should_create_fake_evidence(fake_evidence_rate: float) -> bool:
-    """
-    根据fake evidence rate决定是否创建不包含ground truth的样本
+    def extract_full_text(self):
+        """
+        extract the full text from the paper data.
+        Args:
+            paper_data: the data of a single paper.
+        Returns:
+            context after concatenating the title, abstract and full text.
+        """
+        for paper_id, paper_data in self.paper_data.items():    
+            text_parts = []        
+            if paper_data.get("title"):
+                text_parts.append(paper_data["title"])
+            if paper_data.get("abstract"):
+                text_parts.append(paper_data["abstract"])
+            
+            if "full_text" in paper_data:
+                for section in paper_data["full_text"]:
+                    if "paragraphs" in section:
+                        for paragraph in section["paragraphs"]:
+                            if paragraph.strip():
+                                text_parts.append(paragraph.strip())
+            full_text = "\n\n".join(text_parts)
+            self.paper_data[paper_id]["full_text"] = full_text
     
-    Args:
-        fake_evidence_rate: fake evidence比例
-    
-    Returns:
-        是否创建fake evidence样本
-    """
-    return random.random() < fake_evidence_rate
-
-
-def process_paper(
-    paper_id: str,
-    paper_data: Dict,
-    chunker: Chunker,
-    retriever: Optional[Retriever],
-    distractor_strategy: str,
-    top_k: int,
-    fake_evidence_rate: float
-) -> List[Dict]:
-    """
-    处理单个paper的所有QA pairs
-    
-    Args:
-        paper_id: paper ID
-        paper_data: paper数据
-        chunker: chunker实例
-        retriever: retriever实例
-        distractor_strategy: distractor策略
-        top_k: 总evidence数量
-        fake_evidence_rate: fake evidence比例
-    
-    Returns:
-        训练样本列表
-    """
-    examples = []
-    
-    # 提取并chunk文档
-    full_text = extract_full_text(paper_data)
-    chunks = chunker.chunk(full_text)
-    
-    if len(chunks) == 0:
-        return examples
-    
-    # 如果使用retriever，建立索引
-    if retriever is not None:
-        retriever.index(chunks)
-    
-    # 处理每个QA pair
-    for qa in paper_data.get("qas", []):
-        question = qa.get("question", "")
-        question_id = qa.get("question_id", "")
+    def _convert_evidence_to_chunk_ids(self, gt_evidence: List[str], paper_id: str) -> List[int]:
+        """
+        find the chunk indices that contain the evidence.
         
-        if not question.strip():
-            continue
+        Args:
+            gt_evidence: the list of ground truth evidence texts.
+            paper_id: the id of the paper.
         
-        # 处理每个答案
-        for answer_data in qa.get("answers", []):
-            answer_obj = answer_data.get("answer", {})
-            
-            # 跳过无法回答的问题
-            if answer_obj.get("unanswerable", False):
+        Returns:
+            the list of chunk indices that contain the evidence.
+
+        Notes:
+            The recall threshold is used to filter out the larger chunks that contain a small part of the evidence, which does not contribute to the answer.
+            The precision is designed for smaller chunks that may cannot recall the whole evidence itself, but it is a part of the evidence.
+            This is designed for mitigating the impact of the fragmentary chunked evidence.
+            The threshold is set to 0.5, which means that if the recall or precision is greater than 0.5, the chunk is considered as containing the evidence.
+        """
+        evidence_chunk_ids = set()
+        
+        for evidence in gt_evidence:
+            if not evidence.strip():
                 continue
-            
-            # 获取答案文本
-            answer = answer_obj.get("free_form_answer", "")
-            if not answer.strip():
-                continue
-            
-            # 获取evidence文本
-            evidence_texts = answer_obj.get("evidence", [])
-            
-            # 找到包含evidence的chunks
-            evidence_chunk_ids = find_evidence_chunks(evidence_texts, chunks)
-            
-            # 决定是否创建fake evidence样本
-            create_fake = should_create_fake_evidence(fake_evidence_rate)
-            
-            if create_fake:
-                # 创建不包含ground truth evidence的样本
-                if distractor_strategy == "random":
-                    distractor_chunk_ids = generate_random_distractors(chunks, [], top_k)
-                else:
-                    distractor_chunk_ids = generate_retriever_distractors(
-                        retriever, question, chunks, [], top_k
-                    )
                 
-                evidence_chunks = []
-                distractor_chunks = [chunks[i] for i in distractor_chunk_ids[:top_k]]
-                generation_type = f"fake_{distractor_strategy}"
+            # simple substring matching
+            for i, chunk in enumerate(self.paper_data[paper_id]["chunks"]):
+                if evidence.strip() in chunk or chunk in evidence.strip():
+                    evidence_chunk_ids.add(i)
+                    continue
                 
+                # calculate the overlap rate of the words.
+                evidence_words = set(evidence.lower().split())
+                chunk_words = set(chunk.lower().split())
+                
+                if len(evidence_words) > 0:
+                    recall = len(evidence_words & chunk_words) / len(evidence_words)
+                    precision = len(evidence_words & chunk_words) / len(chunk_words)
+                    if recall >= self.config.get("recall_threshold", 0.5) or precision >= self.config.get("precision_threshold", 0.5):
+                        evidence_chunk_ids.add(i)
+        
+        return list(evidence_chunk_ids)
+
+    def _prepare_entry_metadata(self, qa_data: Dict) -> Dict:
+        '''
+        prepare the metadata for the entry.
+        '''
+        entry = {}
+        entry["data_source"] = "QASPER"
+        entry["ability"] = "ICL"
+        entry["reward_model"] = {"style": "rule", "ground_truth": {}}
+        entry["extra_info"] = {}
+        entry["extra_info"]["paper_id"] = qa_data["paper_id"]
+        entry["extra_info"]["question_id"] = qa_data.get("question_id", "")
+        entry["extra_info"]["question"] = qa_data.get("question", "")
+        entry["extra_info"]["split"] = self.qa_path
+        entry["extra_info"]["references"] = qa_data.get("references", [])
+        return entry
+    
+    def _get_gt_evidence_ids(self, qa_data: Dict) -> List[int]:
+        '''
+        process the ground truth evidence, because there are several annotators for each QA pair, we take the union of the evidence chunk ids.
+        '''
+        gt_evidence_idx = []
+        for annotator_idx in range(len(qa_data["references"])):
+            gt_evidence_ids = self._convert_evidence_to_chunk_ids(qa_data["references"][annotator_idx]["evidence"], qa_data["paper_id"])
+            gt_evidence_idx.extend(gt_evidence_ids)
+        gt_evidence_idx = list(set(gt_evidence_idx))
+        return gt_evidence_idx
+
+
+class QASPERRetrieverDataGenerator(QASPERDataGenerator):
+    def __init__(self, chunker: Chunker, retriever: Retriever, paper_path: str, qa_path: str, config: Dict = None):
+        super().__init__(chunker, retriever, paper_path, qa_path, config)
+        self.retriever = retriever
+        self.chunker = chunker
+        self.paper_path = paper_path
+        self.qa_path = qa_path
+        self.config = config
+        self.QA_data: List[Dict] = []
+        self.paper_data: Dict[str, Dict] = {}
+        self.load_data()
+
+    def generate(self) -> List[Dict]:
+        # 0. about the data: paper is well chunked, retriever is initialized.
+        # 1. manage the configs, important configs include:
+        # 1.1 top-k: the number of total evidence to be input, default is 5.
+        # 1.2 wo_gt_evidence_rate: the rate of entries without ground truth evidence.
+        # 2. for each QA pair:
+        # 2.1 decide whether to create a fake evidence sample.
+        # 2.2 if it is a fake evidence sample, only retrieve the top k + 1 chunks, if it contains the ground truth evidence, remove it and use the rest as distractor evidence. else, use the top k chunks as distractor evidence.
+        # 2.3 if it is a normal evidence sample, retrieve the top k chunks, if it contains the ground truth evidence, directly use it. else, use the top k-1 as distractor evidence.
+        # 2.4 fit the data into the template.
+        # 2.5 tag with the data generation type.
+        # 3. save the data.
+        top_k = self.config.get("top_k", 5)
+        wo_gt_evidence_rate = self.config.get("wo_gt_evidence_rate", 0.1)
+
+        examples = []
+        prev_paper_id = None
+        for qa_data in self.QA_data:
+            # initialize the retriever.
+            if prev_paper_id != qa_data["paper_id"]:
+                self.retriever.reset()
+                self.retriever.index(self.paper_data[qa_data["paper_id"]]["chunks"])
+                prev_paper_id = qa_data["paper_id"]
+
+            
+            # copy the basic and extra information.
+            entry = self._prepare_entry_metadata(qa_data)
+            
+            # get the ground truth evidence chunk ids.
+            gt_evidence_idx = self._get_gt_evidence_ids(qa_data)
+
+            # no matter what, retrieve the top k+n chunks first, here, we assume that the number of ground truth evidence chunks won't be larger than 3.
+            evidence_texts, retriever_res = self.retriever.retrieve(qa_data["question"], top_k + 3)
+            retrieved_ids = [idx for idx, _ in retriever_res]
+
+            # decide whether to create a fake evidence sample.
+            if random.random() < wo_gt_evidence_rate:
+                entry["extra_info"]["generation_type"] = "wo_gt_evidence"
+                # choose the evidence not in ground truth.
+                final_evidence_ids = [idx for idx in retrieved_ids if idx not in gt_evidence_idx]
+                final_evidence_ids = final_evidence_ids[:top_k]
+                # record the evidence chunk ids.
+                entry["extra_info"]["gt_evidence_chunk_ids"] = []
+                entry["extra_info"]["distractor_chunk_ids"] = final_evidence_ids
             else:
-                # 创建包含ground truth evidence的样本
-                evidence_chunks = [chunks[i] for i in evidence_chunk_ids]
-                num_distractors = max(0, top_k - len(evidence_chunks))
-                
-                if num_distractors > 0:
-                    if distractor_strategy == "random":
-                        distractor_chunk_ids = generate_random_distractors(
-                            chunks, evidence_chunk_ids, num_distractors
-                        )
-                    else:
-                        distractor_chunk_ids = generate_retriever_distractors(
-                            retriever, question, chunks, evidence_chunk_ids, top_k
-                        )
-                        distractor_chunk_ids = distractor_chunk_ids[:num_distractors]
-                    
-                    distractor_chunks = [chunks[i] for i in distractor_chunk_ids]
-                else:
-                    distractor_chunks = []
-                
-                generation_type = f"normal_{distractor_strategy}"
+                entry["extra_info"]["generation_type"] = "gt_evidence"
+                final_evidence_ids = gt_evidence_idx + [idx for idx in retrieved_ids if idx not in gt_evidence_idx]
+                final_evidence_ids = final_evidence_ids[:top_k]
+                entry["extra_info"]["evidence_chunk_ids"] = final_evidence_ids
+                entry["extra_info"]["distractor_chunk_ids"] = [idx for idx in retrieved_ids if idx not in final_evidence_ids]
+
+            # change the evidence chunk ids to chunk content.
+            # then fit the content into the template.
+            evidence_chunks = []
+            for chunk_idx in final_evidence_ids:
+                evidence_chunks.append(self.paper_data[qa_data["paper_id"]]["chunks"][chunk_idx])
             
-            # 创建训练样本
-            example = create_training_example(
-                question=question,
-                answer=answer,
-                evidence_chunks=evidence_chunks,
-                distractor_chunks=distractor_chunks,
-                generation_type=generation_type,
-                paper_id=paper_id,
-                question_id=question_id
-            )
+            if self.config.get("number_template", False):
+                evidence_input = "\n\n".join(evidence_chunks)
+            else:
+                evidence_input = "\n\n".join(f"{i+1}.{s}" for i, s in enumerate(evidence_chunks))
             
-            examples.append(example)
-    
-    return examples
-
-
-def main():
-    parser = argparse.ArgumentParser(description="Generate training data for RLRAG model")
-    
-    # 数据路径参数
-    parser.add_argument("--data_path", type=str, required=True,
-                       help="Path to QASPER dataset file")
-    parser.add_argument("--output_path", type=str, required=True,
-                       help="Path to save generated training data")
-    
-    # Chunking策略参数
-    parser.add_argument("--chunking_strategy", type=str, 
-                       choices=["sentence", "paragraph", "greedy_sentence", "greedy_paragraph"],
-                       default="sentence",
-                       help="Chunking strategy to use")
-    parser.add_argument("--max_chunk_length", type=int, default=512,
-                       help="Maximum chunk length for greedy chunkers")
-    
-    # Distractor策略参数
-    parser.add_argument("--distractor_strategy", type=str,
-                       choices=["random", "retriever"],
-                       default="random",
-                       help="Strategy to generate distractor evidence")
-    parser.add_argument("--retriever_type", type=str,
-                       choices=["bm25", "sentence_transformer"],
-                       default="bm25",
-                       help="Type of retriever to use when distractor_strategy is 'retriever'")
-    
-    # 数据生成参数
-    parser.add_argument("--top_k", type=int, default=5,
-                       help="Total number of evidence chunks to include")
-    parser.add_argument("--fake_evidence_rate", type=float, default=0.1,
-                       help="Rate of entries with no ground truth evidence")
-    
-    # 其他参数
-    parser.add_argument("--max_papers", type=int, default=None,
-                       help="Maximum number of papers to process (for testing)")
-    parser.add_argument("--random_seed", type=int, default=42,
-                       help="Random seed for reproducibility")
-    parser.add_argument("--output_format", type=str, choices=["json", "parquet"],
-                       default="json",
-                       help="Output file format")
-    
-    args = parser.parse_args()
-    
-    # 设置随机种子
-    random.seed(args.random_seed)
-    np.random.seed(args.random_seed)
-    
-    print(f"Loading QASPER data from {args.data_path}...")
-    paper_data, QA_data = load_raw_qasper_data(args.data_path)
-    
-    print(f"Initializing chunker: {args.chunking_strategy}")
-    chunker = get_chunker(args.chunking_strategy, args.max_chunk_length)
-    
-    print(f"Initializing retriever for distractor strategy: {args.distractor_strategy}")
-    retriever_config = {"retriever_type": args.retriever_type}
-    retriever = get_retriever(args.distractor_strategy, retriever_config)
-    
-    print("Processing papers...")
-    all_examples = []
-    
-    papers_to_process = list(paper_data.keys())
-    if args.max_papers:
-        papers_to_process = papers_to_process[:args.max_papers]
-    
-    for paper_id in tqdm(papers_to_process, desc="Processing papers"):
-        examples = process_paper(
-            paper_id=paper_id,
-            paper_data=paper_data[paper_id],
-            chunker=chunker,
-            retriever=retriever,
-            distractor_strategy=args.distractor_strategy,
-            top_k=args.top_k,
-            fake_evidence_rate=args.fake_evidence_rate
-        )
-        all_examples.extend(examples)
-    
-    print(f"Generated {len(all_examples)} training examples")
-    
-    # 保存结果
-    print(f"Saving results to {args.output_path}...")
-    if args.output_format == "json":
-        with open(args.output_path, 'w', encoding='utf-8') as f:
-            json.dump(all_examples, f, ensure_ascii=False, indent=2)
-    elif args.output_format == "parquet":
-        df = pd.DataFrame(all_examples)
-        df.to_parquet(args.output_path, index=False)
-    
-    # 打印统计信息
-    print("\n=== Generation Statistics ===")
-    print(f"Total examples: {len(all_examples)}")
-    
-    generation_types = {}
-    for example in all_examples:
-        gen_type = example["generation_type"]
-        generation_types[gen_type] = generation_types.get(gen_type, 0) + 1
-    
-    for gen_type, count in generation_types.items():
-        print(f"{gen_type}: {count} ({count/len(all_examples)*100:.1f}%)")
-    
-    avg_evidence = np.mean([ex["num_evidence"] for ex in all_examples])
-    avg_distractors = np.mean([ex["num_distractors"] for ex in all_examples])
-    print(f"Average evidence chunks per example: {avg_evidence:.2f}")
-    print(f"Average distractor chunks per example: {avg_distractors:.2f}")
-    
-    print("Data generation completed!")
-
-
-if __name__ == "__main__":
-    main()
-
+            # fit the evidence into the template.
+            prompt_template = Prompt_templates[self.config.get("prompt_template", "default")]
+            prompt_template = prompt_template.format(evidence=evidence_input, question=qa_data["question"], answer=qa_data["references"][0]["answer"])
+            entry["prompt"] = prompt_template
+            examples.append(entry)
+        return examples
