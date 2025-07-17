@@ -38,6 +38,7 @@ from utils import load_raw_qasper_data
 from chunker import get_chunker
 from retriever import get_retriever
 from prompts import Prompt_templates
+from configs import DataGeneratorConfig
 
 def find_evidence_chunks(evidence_texts: List[str], chunks: List[str], threshold: float = 0.8) -> List[int]:
     """
@@ -216,7 +217,7 @@ class QASPERDataGenerator:
 
 
 class QASPERRetrieverDataGenerator(QASPERDataGenerator):
-    def __init__(self, chunker: Chunker, retriever: Retriever, paper_path: str, qa_path: str, config: Dict = None):
+    def __init__(self, chunker: Chunker, retriever: Retriever, paper_path: str, qa_path: str, config: DataGeneratorConfig):
         super().__init__(chunker, retriever, paper_path, qa_path, config)
         self.retriever = retriever
         self.chunker = chunker
@@ -239,8 +240,8 @@ class QASPERRetrieverDataGenerator(QASPERDataGenerator):
         # 2.4 fit the data into the template.
         # 2.5 tag with the data generation type.
         # 3. save the data.
-        top_k = self.config.get("top_k", 5)
-        wo_gt_evidence_rate = self.config.get("wo_gt_evidence_rate", 0.1)
+        top_k = self.config.top_k
+        wo_gt_evidence_rate = self.config.wo_gt_evidence_rate
 
         examples = []
         prev_paper_id = None
@@ -284,13 +285,13 @@ class QASPERRetrieverDataGenerator(QASPERDataGenerator):
             for chunk_idx in final_evidence_ids:
                 evidence_chunks.append(self.paper_data[qa_data["paper_id"]]["chunks"][chunk_idx])
             
-            if self.config.get("number_template", False):
+            if self.config.number_template:
                 evidence_input = "\n\n".join(evidence_chunks)
             else:
                 evidence_input = "\n\n".join(f"{i+1}.{s}" for i, s in enumerate(evidence_chunks))
             
             # fit the evidence into the template.
-            prompt_template = Prompt_templates[self.config.get("prompt_template", "default")]
+            prompt_template = Prompt_templates[self.config.prompt_template]
             prompt_template = prompt_template.format(evidence=evidence_input, question=qa_data["question"], answer=qa_data["references"][0]["answer"])
             entry["prompt"] = prompt_template
             examples.append(entry)
