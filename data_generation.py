@@ -28,6 +28,7 @@ import argparse
 import json
 import random
 import pandas as pd
+import copy
 from typing import List, Dict, Any, Tuple, Optional
 from chunker import *
 from retriever import *
@@ -191,7 +192,7 @@ class QASPERDataGenerator:
         entry = {}
         entry["data_source"] = "QASPER"
         entry["ability"] = "ICL"
-        entry["reward_model"] = {"style": "rule", "ground_truth": {}}
+        entry["reward_model"] = {"style": "rule", "ground_truth": {"gt_evidence": [""], "answer": [""]}}
         entry["extra_info"] = {}
         entry["extra_info"]["paper_id"] = qa_data["paper_id"]
         entry["extra_info"]["question_id"] = qa_data.get("question_id", "")
@@ -200,16 +201,26 @@ class QASPERDataGenerator:
         entry["extra_info"]["references"] = qa_data.get("references", [])
         return entry
     
-    def _get_gt_evidence_ids(self, qa_data: Dict) -> List[int]:
+    def _get_gt_evidence(self, qa_data: Dict) -> Tuple[List[int], List[str]]:
         '''
         process the ground truth evidence, because there are several annotators for each QA pair, we take the union of the evidence chunk ids.
         '''
         gt_evidence_idx = []
+        gt_evidence_text = []
         for annotator_idx in range(len(qa_data["references"])):
+            gt_evidence_text.extend(qa_data["references"][annotator_idx]["evidence"])
             gt_evidence_ids = self._convert_evidence_to_chunk_ids(qa_data["references"][annotator_idx]["evidence"], qa_data["paper_id"])
             gt_evidence_idx.extend(gt_evidence_ids)
         gt_evidence_idx = list(set(gt_evidence_idx))
-        return gt_evidence_idx
+        gt_evidence_text = list(set(gt_evidence_text))
+        return gt_evidence_idx, gt_evidence_text
+
+    def _get_gt_answer(self, qa_data: Dict) -> List[str]:
+        gt_answer = []
+        for annotator_idx in range(len(qa_data["references"])):
+            gt_answer.append(qa_data["references"][annotator_idx]["answer"])
+        gt_answer = list(set(gt_answer))
+        return gt_answer
 
 
 class QASPERRetrieverDataGenerator(QASPERDataGenerator):
@@ -249,7 +260,8 @@ class QASPERRetrieverDataGenerator(QASPERDataGenerator):
             entry = self._prepare_entry_metadata(qa_data)
             
             # get the ground truth evidence chunk ids.
-            gt_evidence_idx = self._get_gt_evidence_ids(qa_data)
+            gt_evidence_idx, gt_evidence_text = self._get_gt_evidence(qa_data)
+            gt_answer_text = self._get_gt_answer(qa_data)
 
             # no matter what, retrieve the top k+n chunks first, here, we assume that the number of ground truth evidence chunks won't be larger than 3.
             evidence_texts, retriever_res = self.retriever.retrieve(qa_data["question"], top_k + 3)
@@ -264,12 +276,16 @@ class QASPERRetrieverDataGenerator(QASPERDataGenerator):
                 # record the evidence chunk ids.
                 entry["extra_info"]["gt_evidence_chunk_ids"] = []
                 entry["extra_info"]["distractor_chunk_ids"] = final_evidence_ids
+                entry["reward_model"]["ground_truth"]["gt_evidence"] = [""]
+                entry["reward_model"]["ground_truth"]["answer"] = gt_answer_text
             else:
                 entry["extra_info"]["generation_type"] = "gt_evidence"
                 final_evidence_ids = gt_evidence_idx + [idx for idx in retrieved_ids if idx not in gt_evidence_idx]
                 final_evidence_ids = final_evidence_ids[:top_k]
                 entry["extra_info"]["evidence_chunk_ids"] = final_evidence_ids
                 entry["extra_info"]["distractor_chunk_ids"] = [idx for idx in retrieved_ids if idx not in final_evidence_ids]
+                entry["reward_model"]["ground_truth"]["gt_evidence"] = gt_evidence_text
+                entry["reward_model"]["ground_truth"]["answer"] = gt_answer_text
 
             # change the evidence chunk ids to chunk content.
             # then fit the content into the template.
@@ -283,8 +299,12 @@ class QASPERRetrieverDataGenerator(QASPERDataGenerator):
                 evidence_input = "\n\n".join(f"{i+1}.{s}" for i, s in enumerate(evidence_chunks))
             
             # fit the evidence into the template.
-            prompt_template = Prompt_templates[self.config.prompt_template]
-            prompt_template = prompt_template.format(evidence=evidence_input, question=qa_data["question"], answer=qa_data["references"][0]["answer"])
+            prompt_template = copy.deepcopy(Prompt_templates[self.config.prompt_template])
+            # Use replace method to avoid KeyError from curly braces in evidence text
+            content = prompt_template[1]["content"]
+            content = content.replace("{question}", qa_data["question"])
+            content = content.replace("{ref}", evidence_input)
+            prompt_template[1]["content"] = content
             entry["prompt"] = prompt_template
             examples.append(entry)
         return examples
