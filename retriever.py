@@ -96,6 +96,7 @@ class SentenceTransformerRetriever(Retriever):
         self.data = []
         self.faiss_index = None
         self.model_name = config.model_name
+        self.device = config.device
 
     def reset(self):
         self.embeddings = []
@@ -103,7 +104,7 @@ class SentenceTransformerRetriever(Retriever):
         self.faiss_index = None
 
     def load_model(self):
-        return SentenceTransformer(self.model_name)
+        return SentenceTransformer(self.model_name, device=self.device)
 
     def index(self, data: List[str]):
         self.embeddings = self.model.encode(data)
