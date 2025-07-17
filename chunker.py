@@ -2,6 +2,7 @@
 # If you want to modify the chunker, just inherit the Chunker class and override the methods.
 from typing import List, Dict
 from transformers import AutoTokenizer
+from configs import ChunkerConfig
 
 class Chunker:
     def __init__(self):
@@ -67,12 +68,12 @@ class GreedyParagraphChunker(Chunker):
         return chunks
 
 class TokenChunker(Chunker):
-    def __init__(self, config: Dict):
+    def __init__(self, config: ChunkerConfig):
         super().__init__()
         self.config = config
-        self.tokenizer = AutoTokenizer.from_pretrained(config["model_name"])
-        self.length = config["max_length"]
-        self.overlap = config["overlap"]
+        self.tokenizer = AutoTokenizer.from_pretrained(config.model_name)
+        self.length = config.max_length
+        self.overlap = config.overlap
 
     def chunk(self, document: str) -> List[str]:
         token_ids = self.tokenizer.tokenize(document)
@@ -83,7 +84,7 @@ class TokenChunker(Chunker):
         chunks = [self.tokenizer.decode(chunk) for chunk in chunks]
         return chunks
 
-def get_chunker(chunking_strategy: str, max_length: int = None, overlap: int = None, model_name: str = None) -> Chunker:
+def get_chunker(config: ChunkerConfig) -> Chunker:
     """
     根据策略名称获取chunker实例
     
@@ -94,6 +95,9 @@ def get_chunker(chunking_strategy: str, max_length: int = None, overlap: int = N
     Returns:
         Chunker实例
     """
+    chunking_strategy = config.chunking_strategy
+    max_length = config.max_length
+    overlap = config.overlap
     if chunking_strategy == "sentence":
         return SentenceChunker()
     elif chunking_strategy == "paragraph":
@@ -103,7 +107,7 @@ def get_chunker(chunking_strategy: str, max_length: int = None, overlap: int = N
     elif chunking_strategy == "greedy_paragraph":
         return GreedyParagraphChunker(max_length=max_length or 512)
     elif chunking_strategy == "token":
-        return TokenChunker(config={"model_name": model_name, "max_length": max_length or 512, "overlap": overlap or 0})
+        return TokenChunker(config)
     else:   
         raise ValueError(f"Unknown chunking strategy: {chunking_strategy}")
 
