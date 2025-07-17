@@ -1,10 +1,10 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import List
 
 @dataclass
 class PreprocessConfig:
-    dataset: list = ["qasper"]
-    data_folder: List[str] = ["data/qasper"]
+    dataset: list = field(default_factory=lambda: ["qasper"])
+    data_folder: List[str] = field(default_factory=lambda: ["data/qasper"])
 
 
 # each type of retriever has its corresponding parameters.
@@ -32,9 +32,9 @@ class ChunkerConfig:
 
 @dataclass
 class DataGeneratorConfig:
-    dataset: list = ["qasper"]
-    paper_path: str = "./data/qasper/paper.json"
-    qa_path: str = "./data/qasper/qa.json"
+    dataset: list = field(default_factory=lambda: ["qasper"])
+    data_folder: str = "./data/qasper"
+    split: str = "train"
     top_k: int = 5
     wo_gt_evidence_rate: float = 0.2
     prompt_template: str = "default"
