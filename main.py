@@ -16,6 +16,7 @@ from retriever import get_retriever
 from chunker import get_chunker
 from configs import Configs, PreprocessConfig, RetrieverConfig, ChunkerConfig, DataGeneratorConfig
 from data_generation import QASPERRetrieverDataGenerator
+from utils import save_parquet
 
 custom_PreprocessConfig = PreprocessConfig(
     dataset=["qasper"],
@@ -30,15 +31,15 @@ custom_bm25_RetrieverConfig = RetrieverConfig(
 
 custom_ChunkerConfig = ChunkerConfig(
     chunking_strategy = "token",
-    model_name = "all-MiniLM-L6-v2",
+    model_name = "/root/shared_planing/LLM_model/Qwen3-Embedding-4B",
     max_length = 512,
-    overlap = 0
+    overlap = 64
 )
 
 custom_DataGeneratorConfig = DataGeneratorConfig(
     dataset = ["qasper"],
-    paper_path = "data/qasper/paper.json",
-    qa_path = "data/qasper/qa.json",
+    data_folder = "./data/qasper",
+    split = "train",
     top_k = 5,
     wo_gt_evidence_rate = 0.2,
     prompt_template = "default",
@@ -46,11 +47,14 @@ custom_DataGeneratorConfig = DataGeneratorConfig(
 )
 
 def main():
-    preprocess_QASPER(custom_PreprocessConfig)
+    preprocess_QASPER(custom_PreprocessConfig.data_folder[0])
     retriever = get_retriever(custom_bm25_RetrieverConfig)
     chunker = get_chunker(custom_ChunkerConfig)
     data_generator = QASPERRetrieverDataGenerator(chunker, retriever, custom_DataGeneratorConfig)
     BM_25_data = data_generator.generate()
+    print(BM_25_data[0])
+    file_name = f"./data/processed/QASPER_Split-{custom_DataGeneratorConfig.split}_Prompt-{custom_DataGeneratorConfig.prompt_template}_NumberTemplate-{custom_DataGeneratorConfig.number_template}_Retriever-{custom_bm25_RetrieverConfig.retriever_type}_TopK-{custom_DataGeneratorConfig.top_k}_WO_GT_Evidence_Rate-{custom_DataGeneratorConfig.wo_gt_evidence_rate}.parquet"
+    save_parquet(BM_25_data, file_name)
 
 if __name__ == "__main__":
     main()
