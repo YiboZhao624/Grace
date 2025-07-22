@@ -1,4 +1,5 @@
 import re
+from typing import List
 
 def format_reward(data:str):
     # check the format of the output text.
@@ -50,10 +51,12 @@ def format_reward(data:str):
 def choice_reward(data:str, gt_evidence):
     # if the model choose the correct tag, give 0.5 reward
     # else, give 0 reward.
-    gt_choice = "<evidence>" if gt_evidence else "<llm>"
-    choice = data.split(">")[0] + ">"
-    if choice == gt_choice:
-        return 0.5, choice
+    gt_choice = "<evidence>" if gt_evidence != [""] else "<llm>"
+    choice = "<evidence>" if "<evidence>" in data else "<llm>"
+    if choice == gt_choice and choice == "<evidence>":
+        return 1, choice
+    elif choice == gt_choice and choice == "<llm>":
+        return 5, choice
     else:
         return 0, choice
 
@@ -80,15 +83,44 @@ def evidence_reward(data:str, gt_evidence:str):
         return max_len
     
     lcs = longest_common_substring(gt_evidence, selected_evidence)
+    if len(gt_evidence) == 0 or len(selected_evidence) == 0:
+        return 0
     precision = lcs / len(selected_evidence)
     recall = lcs / len(gt_evidence)
 
-    return precision * recall
+    # a larger weight.
+    return precision * recall * 3
 
-def answer_reward(data):
+def answer_reward(data: str, ground_truth: List[str]):
     # if the model return the correct answer, give 2 reward.
     # else, give 0 reward.
-    pass
+    answer = data.split("</answer>")[0].strip("<answer>")
+    nomarlized_answer = answer.lower().strip()
+    nomarlized_ground_truth = ground_truth.lower().strip()
+    if nomarlized_answer == nomarlized_ground_truth:
+        return 2
+    else:
+        # return a simple similarity score
+        if len(nomarlized_ground_truth) == 0:
+            return 0
+        # Use LCS-based similarity (similar to ROUGE-L)
+        def longest_common_substring(s1, s2):
+            if not s1 or not s2:
+                return 0
+            m, n = len(s1), len(s2)
+            prev = [0] * (n + 1)
+            max_len = 0
+            for i in range(1, m + 1):
+                curr = [0] * (n + 1)
+                for j in range(1, n + 1):
+                    if s1[i - 1] == s2[j - 1]:
+                        curr[j] = prev[j - 1] + 1
+                        max_len = max(max_len, curr[j])
+                prev = curr
+            return max_len
+        
+        lcs_len = longest_common_substring(nomarlized_answer, nomarlized_ground_truth)
+        return 2 * lcs_len / (len(nomarlized_answer) + len(nomarlized_ground_truth))
 
 def bonus_reward(format_reward, choice_reward,
          evidence_reward, answer_reward):
@@ -97,36 +129,39 @@ def bonus_reward(format_reward, choice_reward,
     # if the model choose the llm tag correctly, return the answer aligned with the original model with designed format, return a large bonus.
     pass
 
-def unalignment_punish(format_reward, choice_reward,
+def recitation_punish(format_reward, choice_reward,
          evidence_reward, answer_reward):
-    # check the alignment of the model output.
-    # if the model choose the evidence tag incorrectly, but return the correct answer, return a penalty.
     # if the model choose the evidence tag correctly, but select the evidence incorrectly with a correct answer, return a larger penalty.
     pass
 
-def reward_function(data,gt_evidence, gt_answer)->dict:
+def reward_function(data,gt_evidences:List[str], gt_answers:List[str])->dict:
     '''
     return a dictionary with key of score and reward_extra_info.
     score is the total reward, and the reward_extra_info is a dictionary with key of choice_r, format_r, evidence_r, answer_r.
     '''
     total_reward = 0
-    text = data["output"]
+    text = data
     format_r = format_reward(text)
     total_reward += format_r
 
-    choice_r, choice = choice_reward(text, gt_evidence)
+    choice_r, choice = choice_reward(text, gt_evidences)
+    choice_report = 1 if choice == "<llm>" else 0
     total_reward += choice_r
-    answer_r = answer_reward(text)
-    evidence_r = evidence_reward(text, gt_evidence)
+    answer_r = 0
+    evidence_r = 0
 
     if choice == "<evidence>":
+        for gt_evidence, gt_answer in zip(gt_evidences, gt_answers):
+            answer_r = max(answer_r, answer_reward(text, gt_answer))
+            evidence_r = max(evidence_r, evidence_reward(text, gt_evidence))
         total_reward += evidence_r
+        total_reward += answer_r
+        return {"score": total_reward, "choice": choice_report, "choice_r": choice_r, "evidence": evidence_r, "answer": answer_r, "format": format_r}
     elif choice == "<llm>":
-        pass
+        total_reward += answer_r
+        return {"score": total_reward, "choice": choice_report, "choice_r": choice_r, "evidence": evidence_r, "answer": answer_r, "format": format_r}
     else:
         return 0
-
-    return {"score": total_reward, "extra_info": {"choice": choice, "choice_r": choice_r, "evidence": evidence_r, "answer": answer_r, "format": format_r}}
 
 
 def default_compute_score(data_source, solution_str, ground_truth, extra_info=None, sandbox_fusion_url=None, concurrent_semaphore=None, memory_limit_mb=None): 
@@ -151,7 +186,7 @@ def default_compute_score(data_source, solution_str, ground_truth, extra_info=No
          NotImplementedError: If the reward function is not implemented for the given data source. 
      """ 
     if data_source in ["QASPER"]:
-       gt_evidence = ground_truth["evidence"]
+       gt_evidence = ground_truth["gt_evidence"]
        gt_answer = ground_truth["answer"]
        res = reward_function(solution_str, gt_evidence, gt_answer)
     else: 
@@ -163,3 +198,10 @@ def default_compute_score(data_source, solution_str, ground_truth, extra_info=No
         return float(res) 
     else: 
         return float(res[0])
+
+
+if __name__ == "__main__":
+    data = "<llm>This is a test</llm><answer>This is a test</answer>"
+    gt_evidence = [""]
+    answer = choice_reward(data, gt_evidence)
+    print(answer)
