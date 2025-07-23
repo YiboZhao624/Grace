@@ -42,6 +42,13 @@ class DataGeneratorConfig:
     recall_threshold: float = 0.5
     precision_threshold: float = 0.5
 
+@dataclass
+class RerankerConfig:
+    reranker_type: str = "vllm"
+    model_name: str = "/root/shared_planing/LLM_model/Qwen3-Embedding-4B"
+    device: str = "cuda:7"
+    url: str = "http://localhost:8000"
+
 
 @dataclass
 class Configs:
