@@ -7,6 +7,7 @@ import numpy as np
 import vllm
 from faiss import IndexFlatL2
 from configs import RetrieverConfig
+import requests
 
 class Retriever:
     def __init__(self):
@@ -122,11 +123,11 @@ class vLLMRetriever(Retriever):
     # you should launch the vLLM server first.
     def __init__(self, url:str, config:RetrieverConfig):
         super().__init__()
-        self.client = vllm.Client(url=url)
+        self.base_url = f"{self.config.base_url}/retrieve"
+        self.model_name = self.config.model_name
         self.embeddings = []
         self.data = []
         self.faiss_index = None
-        self.url = url
     
     def reset(self):
         self.embeddings = []
@@ -134,12 +135,26 @@ class vLLMRetriever(Retriever):
         self.faiss_index = None
     
     def call_model(self, input_text:Union[str, List[str]]) -> List[np.ndarray]:
-        if isinstance(input_text, str):
-            response = self.client.embed(input_text)
-            return [response.embeddings[0]]
-        elif isinstance(input_text, List):
-            response = self.client.embed(input_text)
-            return response.embeddings
+        headers = {
+            "Content-Type": "application/json",
+            "Authorization": "Bearer sk-fake-key"
+        }
+        
+        payload = {
+            "model": self.model_name,
+            "query": input_text,
+        }
+
+        response = requests.post(self.base_url, headers=headers, json=payload)
+        response.raise_for_status()
+        result = response.json()
+        return [result["results"][i]["embedding"] for i in range(len(result["results"]))]
+        # if isinstance(input_text, str):
+        #     response = self.client.embed(input_text)
+        #     return [response.embeddings[0]]
+        # elif isinstance(input_text, List):
+        #     response = self.client.embed(input_text)
+        #     return response.embeddings
 
     def index(self, data: List[str]):
         self.embeddings = self.call_model(data)
