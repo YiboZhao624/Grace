@@ -18,8 +18,9 @@ class RetrieverConfig:
     # sentence-transformer parameters
     model_name: str = "/root/shared_planing/LLM_model/Qwen3-Embedding-4B"
     device: str = "cuda:7"
-    # vLLM parameters
-    url: str = "http://localhost:8000"
+    # vLLM parameters, model_name is shared with sentence-transformer.
+    base_url: str = "http://localhost:8000"
+
 
 # same for chunker.
 @dataclass
