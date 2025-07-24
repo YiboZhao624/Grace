@@ -23,6 +23,28 @@ the options for this file include:
 
 Notice: if the distractor strategy is "retriever", the retriever should be imported from the retriever.py file.
 '''
+# the required data format for the veRL:
+# {
+#     "data_source": str, align with the custom_reward.py
+#     "prompt": [
+#         {
+#             "role": "user" or "assistant",
+#             "content": str
+#         }
+#     ],
+#     "ability": "ICL",
+#     "reward_model": {"style": "rule",
+#                      "ground_truth": {"answer": str,
+#                                       "evidence": List[str]}},
+#     "extra_info":{
+#         "split": str,
+#         "index": int,
+#         "question_id": str,
+#         "paper_id": str,
+#         "generation_type": str,
+#         "generation_config": List[int]
+#     }
+# }
 
 import argparse
 import json
