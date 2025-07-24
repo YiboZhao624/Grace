@@ -32,6 +32,7 @@ import copy
 from typing import List, Dict, Any, Tuple, Optional
 from chunker import *
 from retriever import *
+from reranker import *
 import numpy as np
 from tqdm import tqdm
 from utils import load_raw_qasper_data
@@ -85,6 +86,7 @@ def find_evidence_chunks(evidence_texts: List[str], chunks: List[str], threshold
 class QASPERDataGenerator:
     # this class is used to generate the training data for the QASPER dataset.
     # it is a meta class that should be inherited by the specific data generator.
+    # to implement a new data generator, just inherit this class and implement the organize_evidence function.
     # the implemented generators include: 
     # 1. QASPERRetrieverDataGenerator: using the retriever.
     # 2. QASPERRandomDataGenerator: using the random strategy.
@@ -108,9 +110,6 @@ class QASPERDataGenerator:
             chunks = self.chunk_paper(paper_id)
             self.paper_data[paper_id]["chunks"] = chunks
         self.QA_data = QA_data
-
-    def generate(self) -> List[Dict]:
-        raise NotImplementedError("You can't directly use the meta class. Subclasses must implement this method")
 
     def chunk_paper(self, paper_id: str) -> List[str]:
         """
@@ -222,14 +221,15 @@ class QASPERDataGenerator:
         gt_answer = list(set(gt_answer))
         return gt_answer
 
+    def organize_evidence(self, qa_data: Dict) -> List[str]:
+        raise NotImplementedError("You can't directly use the meta class. Subclasses must implement this method")
 
-class QASPERRetrieverDataGenerator(QASPERDataGenerator):
-    def __init__(self, chunker: Chunker, retriever: Retriever, config: DataGeneratorConfig):
-        super().__init__(chunker, retriever, config)
-        self.retriever = retriever
-        self.chunker = chunker
-        self.config = config
-        # Note: self.QA_data and self.paper_data are already initialized by parent class
+    def manage_chunk_text_list_to_text(self, chunk_text_list: List[str]) -> str:
+        if self.config.number_template:
+            evidence_input = "\n\n".join(chunk_text_list)
+        else:
+            evidence_input = "\n\n".join(f"{i+1}.{s}" for i, s in enumerate(chunk_text_list))
+        return evidence_input
 
     def generate(self) -> List[Dict]:
         # 0. about the data: paper is well chunked, retriever is initialized.
@@ -262,42 +262,13 @@ class QASPERRetrieverDataGenerator(QASPERDataGenerator):
             # get the ground truth evidence chunk ids.
             gt_evidence_idx, gt_evidence_text = self._get_gt_evidence(qa_data)
             gt_answer_text = self._get_gt_answer(qa_data)
+            entry["reward_model"]["ground_truth"]["answer"] = gt_answer_text
 
-            # no matter what, retrieve the top k+n chunks first, here, we assume that the number of ground truth evidence chunks won't be larger than 3.
-            evidence_texts, retriever_res = self.retriever.retrieve(qa_data["question"], top_k + 3)
-            retrieved_ids = [idx for idx, _ in retriever_res]
-
-            # decide whether to create a fake evidence sample.
-            if random.random() < wo_gt_evidence_rate:
-                entry["extra_info"]["generation_type"] = "wo_gt_evidence"
-                # choose the evidence not in ground truth.
-                final_evidence_ids = [idx for idx in retrieved_ids if idx not in gt_evidence_idx]
-                final_evidence_ids = final_evidence_ids[:top_k]
-                # record the evidence chunk ids.
-                entry["extra_info"]["gt_evidence_chunk_ids"] = []
-                entry["extra_info"]["distractor_chunk_ids"] = final_evidence_ids
-                entry["reward_model"]["ground_truth"]["gt_evidence"] = [""]
-                entry["reward_model"]["ground_truth"]["answer"] = gt_answer_text
-            else:
-                entry["extra_info"]["generation_type"] = "gt_evidence"
-                final_evidence_ids = gt_evidence_idx + [idx for idx in retrieved_ids if idx not in gt_evidence_idx]
-                final_evidence_ids = final_evidence_ids[:top_k]
-                entry["extra_info"]["evidence_chunk_ids"] = final_evidence_ids
-                entry["extra_info"]["distractor_chunk_ids"] = [idx for idx in retrieved_ids if idx not in final_evidence_ids]
-                entry["reward_model"]["ground_truth"]["gt_evidence"] = gt_evidence_text
-                entry["reward_model"]["ground_truth"]["answer"] = gt_answer_text
-
-            # change the evidence chunk ids to chunk content.
-            # then fit the content into the template.
-            evidence_chunks = []
-            for chunk_idx in final_evidence_ids:
-                evidence_chunks.append(self.paper_data[qa_data["paper_id"]]["chunks"][chunk_idx])
+            # organize the evidence.
+            evidence_chunks, entry = self.organize_evidence(qa_data, gt_evidence_idx, gt_evidence_text, entry)
             
-            if self.config.number_template:
-                evidence_input = "\n\n".join(evidence_chunks)
-            else:
-                evidence_input = "\n\n".join(f"{i+1}.{s}" for i, s in enumerate(evidence_chunks))
-            
+            evidence_input = self.manage_chunk_text_list_to_text(evidence_chunks)
+
             # fit the evidence into the template.
             prompt_template = copy.deepcopy(Prompt_templates[self.config.prompt_template])
             # Use replace method to avoid KeyError from curly braces in evidence text
@@ -308,3 +279,154 @@ class QASPERRetrieverDataGenerator(QASPERDataGenerator):
             entry["prompt"] = prompt_template
             examples.append(entry)
         return examples
+
+
+class QASPERRetrieverDataGenerator(QASPERDataGenerator):
+    def __init__(self, chunker: Chunker, retriever: Retriever, config: DataGeneratorConfig):
+        super().__init__(chunker, retriever, config)
+        self.retriever = retriever
+        self.chunker = chunker
+        self.config = config
+        # Note: self.QA_data and self.paper_data are already initialized by parent class
+
+    def organize_evidence(self, qa_data: Dict, gt_evidence_idx: List[int], gt_evidence_text: List[str], entry: dict) -> List[str]:
+        # decide whether to create a fake evidence sample.
+        # no matter what, retrieve the top k+n chunks first, here, we assume that the number of ground truth evidence chunks won't be larger than 3.
+        evidence_texts, retriever_res = self.retriever.retrieve(qa_data["question"], self.config.top_k + 3)
+        retrieved_ids = [idx for idx, _ in retriever_res]
+        if self.config.split == "train":
+            if random.random() < self.config.wo_gt_evidence_rate:
+                entry["extra_info"]["generation_type"] = "wo_gt_evidence"
+                # choose the evidence not in ground truth.
+                final_evidence_ids = [idx for idx in retrieved_ids if idx not in gt_evidence_idx]
+                final_evidence_ids = final_evidence_ids[:self.config.top_k]
+                # record the evidence chunk ids.
+                entry["extra_info"]["gt_evidence_chunk_ids"] = []
+                entry["extra_info"]["distractor_chunk_ids"] = final_evidence_ids
+                entry["reward_model"]["ground_truth"]["gt_evidence"] = [""]
+                
+            else:
+                entry["extra_info"]["generation_type"] = "gt_evidence"
+                final_evidence_ids = gt_evidence_idx + [idx for idx in retrieved_ids if idx not in gt_evidence_idx]
+                final_evidence_ids = final_evidence_ids[:self.config.top_k]
+                entry["extra_info"]["evidence_chunk_ids"] = final_evidence_ids
+                entry["extra_info"]["distractor_chunk_ids"] = [idx for idx in retrieved_ids if idx not in final_evidence_ids]
+                entry["reward_model"]["ground_truth"]["gt_evidence"] = gt_evidence_text
+
+            # change the evidence chunk ids to chunk content.
+            # then fit the content into the template.
+            evidence_chunks = []
+            for chunk_idx in final_evidence_ids:
+                evidence_chunks.append(self.paper_data[qa_data["paper_id"]]["chunks"][chunk_idx])
+        return evidence_chunks, entry
+
+    # def generate(self) -> List[Dict]:
+    #     # 0. about the data: paper is well chunked, retriever is initialized.
+    #     # 1. manage the configs, important configs include:
+    #     # 1.1 top-k: the number of total evidence to be input, default is 5.
+    #     # 1.2 wo_gt_evidence_rate: the rate of entries without ground truth evidence.
+    #     # 2. for each QA pair:
+    #     # 2.1 decide whether to create a fake evidence sample.
+    #     # 2.2 if it is a fake evidence sample, only retrieve the top k + 1 chunks, if it contains the ground truth evidence, remove it and use the rest as distractor evidence. else, use the top k chunks as distractor evidence.
+    #     # 2.3 if it is a normal evidence sample, retrieve the top k chunks, if it contains the ground truth evidence, directly use it. else, use the top k-1 as distractor evidence.
+    #     # 2.4 fit the data into the template.
+    #     # 2.5 tag with the data generation type.
+    #     # 3. save the data.
+    #     top_k = self.config.top_k
+    #     wo_gt_evidence_rate = self.config.wo_gt_evidence_rate
+
+    #     examples = []
+    #     prev_paper_id = None
+    #     for qa_data in tqdm(self.QA_data, desc="Generating data"):
+    #         # initialize the retriever.
+    #         if prev_paper_id != qa_data["paper_id"]:
+    #             self.retriever.reset()
+    #             self.retriever.index(self.paper_data[qa_data["paper_id"]]["chunks"])
+    #             prev_paper_id = qa_data["paper_id"]
+
+            
+    #         # copy the basic and extra information.
+    #         entry = self._prepare_entry_metadata(qa_data)
+            
+    #         # get the ground truth evidence chunk ids.
+    #         gt_evidence_idx, gt_evidence_text = self._get_gt_evidence(qa_data)
+    #         gt_answer_text = self._get_gt_answer(qa_data)
+
+    #         # no matter what, retrieve the top k+n chunks first, here, we assume that the number of ground truth evidence chunks won't be larger than 3.
+    #         evidence_texts, retriever_res = self.retriever.retrieve(qa_data["question"], top_k + 3)
+    #         retrieved_ids = [idx for idx, _ in retriever_res]
+
+    #         # decide whether to create a fake evidence sample.
+    #         if random.random() < wo_gt_evidence_rate:
+    #             entry["extra_info"]["generation_type"] = "wo_gt_evidence"
+    #             # choose the evidence not in ground truth.
+    #             final_evidence_ids = [idx for idx in retrieved_ids if idx not in gt_evidence_idx]
+    #             final_evidence_ids = final_evidence_ids[:top_k]
+    #             # record the evidence chunk ids.
+    #             entry["extra_info"]["gt_evidence_chunk_ids"] = []
+    #             entry["extra_info"]["distractor_chunk_ids"] = final_evidence_ids
+    #             entry["reward_model"]["ground_truth"]["gt_evidence"] = [""]
+    #             entry["reward_model"]["ground_truth"]["answer"] = gt_answer_text
+    #         else:
+    #             entry["extra_info"]["generation_type"] = "gt_evidence"
+    #             final_evidence_ids = gt_evidence_idx + [idx for idx in retrieved_ids if idx not in gt_evidence_idx]
+    #             final_evidence_ids = final_evidence_ids[:top_k]
+    #             entry["extra_info"]["evidence_chunk_ids"] = final_evidence_ids
+    #             entry["extra_info"]["distractor_chunk_ids"] = [idx for idx in retrieved_ids if idx not in final_evidence_ids]
+    #             entry["reward_model"]["ground_truth"]["gt_evidence"] = gt_evidence_text
+    #             entry["reward_model"]["ground_truth"]["answer"] = gt_answer_text
+
+    #         # change the evidence chunk ids to chunk content.
+    #         # then fit the content into the template.
+    #         evidence_chunks = []
+    #         for chunk_idx in final_evidence_ids:
+    #             evidence_chunks.append(self.paper_data[qa_data["paper_id"]]["chunks"][chunk_idx])
+            
+    #         if self.config.number_template:
+    #             evidence_input = "\n\n".join(evidence_chunks)
+    #         else:
+    #             evidence_input = "\n\n".join(f"{i+1}.{s}" for i, s in enumerate(evidence_chunks))
+            
+    #         # fit the evidence into the template.
+    #         prompt_template = copy.deepcopy(Prompt_templates[self.config.prompt_template])
+    #         # Use replace method to avoid KeyError from curly braces in evidence text
+    #         content = prompt_template[1]["content"]
+    #         content = content.replace("{question}", qa_data["question"])
+    #         content = content.replace("{ref}", evidence_input)
+    #         prompt_template[1]["content"] = content
+    #         entry["prompt"] = prompt_template
+    #         examples.append(entry)
+    #     return examples
+
+class QASPEROracleDataGenerator(QASPERDataGenerator):
+    '''
+    this class is used to generate the data with the oracle evidence.
+    It is treated as the most easily type of data.
+    '''
+    def __init__(self, chunker: Chunker, retriever: Retriever, config: DataGeneratorConfig):
+        super().__init__(chunker, retriever, config)
+        self.retriever = retriever
+        self.chunker = chunker
+        self.config = config
+        # Note: self.QA_data and self.paper_data are already initialized by parent class
+
+    def organize_evidence(self, qa_data: Dict, gt_evidence_idx: List[int], gt_evidence_text: List[str], entry: dict) -> List[str]:
+        # no need to retrieve the evidence, just use the ground truth evidence.
+        entry["extra_info"]["generation_type"] = "gt_evidence"
+        entry["extra_info"]["gt_evidence_chunk_ids"] = gt_evidence_idx
+        entry["extra_info"]["distractor_chunk_ids"] = []
+        entry["reward_model"]["ground_truth"]["gt_evidence"] = gt_evidence_text
+        # due to there is no distractor evidence, we directly return the evidence text.
+        return gt_evidence_text, entry
+
+
+class QASPERRetrieverRerankerDataGenerator(QASPERDataGenerator):
+    '''
+    this class is used to generate the data with the retriever and reranker.
+    '''
+    def __init__(self, chunker: Chunker, retriever: Retriever, reranker: Reranker, config: DataGeneratorConfig):
+        super().__init__(chunker, retriever, config)
+        self.retriever = retriever
+        self.chunker = chunker
+        self.config = config
+        # Note: self.QA_data and self.paper_data are already initialized by parent class
