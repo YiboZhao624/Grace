@@ -46,15 +46,17 @@ custom_DataGeneratorConfig = DataGeneratorConfig(
     number_template = False
 )
 
-def main():
+def generate_one_config(custom_DataGeneratorConfig: DataGeneratorConfig):
     preprocess_QASPER(custom_PreprocessConfig.data_folder[0])
     retriever = get_retriever(custom_bm25_RetrieverConfig)
     chunker = get_chunker(custom_ChunkerConfig)
     data_generator = QASPERRetrieverDataGenerator(chunker, retriever, custom_DataGeneratorConfig)
     BM_25_data = data_generator.generate()
     print(BM_25_data[0])
-    file_name = f"./data/processed/QASPER_Split-{custom_DataGeneratorConfig.split}_Prompt-{custom_DataGeneratorConfig.prompt_template}_NumberTemplate-{custom_DataGeneratorConfig.number_template}_Retriever-{custom_bm25_RetrieverConfig.retriever_type}_TopK-{custom_DataGeneratorConfig.top_k}_WO_GT_Evidence_Rate-{custom_DataGeneratorConfig.wo_gt_evidence_rate}.parquet"
+    file_name = f"./data/processed/QASPER_Split-{custom_DataGeneratorConfig.split}_Prompt-{custom_DataGeneratorConfig.prompt_template}_NumberTemplate-{custom_DataGeneratorConfig.number_template}_Retriever-{custom_bm25_RetrieverConfig.retriever_type}_TopK-{custom_DataGeneratorConfig.top_k}_WO_GT_Evidence_Rate-{custom_DataGeneratorConfig.wo_gt_evidence_rate}-test.parquet"
     save_parquet(BM_25_data, file_name)
 
 if __name__ == "__main__":
-    main()
+    custom_data_generator_configs = []
+    for custom_data_generator_config in custom_data_generator_configs:
+        generate_one_config(custom_data_generator_config)
