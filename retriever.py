@@ -92,12 +92,13 @@ class BM25Retriever(Retriever):
 class SentenceTransformerRetriever(Retriever):
     def __init__(self, config: RetrieverConfig):
         super().__init__()
+        self.config = config
         self.model = self.load_model()
         self.embeddings = []
         self.data = []
         self.faiss_index = None
-        self.model_name = config.model_name
-        self.device = config.device
+        self.model_name = self.config.model_name
+        self.device = self.config.device
 
     def reset(self):
         self.embeddings = []
@@ -121,13 +122,19 @@ class SentenceTransformerRetriever(Retriever):
 
 class vLLMRetriever(Retriever):
     # you should launch the vLLM server first.
-    def __init__(self, url:str, config:RetrieverConfig):
+    def __init__(self, config:RetrieverConfig):
         super().__init__()
-        self.base_url = f"{self.config.base_url}/retrieve"
+        self.config = config
+        self.base_url = f"{self.config.base_url}/v1/embeddings"
         self.model_name = self.config.model_name
         self.embeddings = []
         self.data = []
         self.faiss_index = None
+        print(f"using the vllm retriever {self.model_name} at {self.base_url}")
+
+    def load_model(self):
+        # there is no need to load model for vllm retriever.
+        return None
     
     def reset(self):
         self.embeddings = []
@@ -135,20 +142,21 @@ class vLLMRetriever(Retriever):
         self.faiss_index = None
     
     def call_model(self, input_text:Union[str, List[str]]) -> List[np.ndarray]:
+        if isinstance(input_text, str):
+            input_text = [input_text]
         headers = {
-            "Content-Type": "application/json",
-            "Authorization": "Bearer sk-fake-key"
+            "Content-Type": "application/json"
         }
         
         payload = {
             "model": self.model_name,
-            "query": input_text,
+            "input": input_text,
         }
 
         response = requests.post(self.base_url, headers=headers, json=payload)
         response.raise_for_status()
         result = response.json()
-        return [result["results"][i]["embedding"] for i in range(len(result["results"]))]
+        return np.array([result["data"][i]["embedding"] for i in range(len(result["data"]))])
         # if isinstance(input_text, str):
         #     response = self.client.embed(input_text)
         #     return [response.embeddings[0]]
@@ -163,12 +171,12 @@ class vLLMRetriever(Retriever):
         self.faiss_index.add(self.embeddings)
     
     def retrieve(self, query: str, top_k: int) -> Tuple[List[str], List[Tuple[int, float]]]:
-        query_embedding = self.call_model(query)[0]
+        query_embedding = self.call_model(query)
         distances, indices = self.faiss_index.search(query_embedding, top_k)
         return [self.data[idx] for idx in indices[0]], [(idx, score) for idx, score in enumerate(distances[0])]
 
 
-def get_retriever(config: Dict = None) -> Optional[Retriever]:
+def get_retriever(config: RetrieverConfig = None) -> Optional[Retriever]:
     """
     get retriever instance according to the distractor strategy
     
@@ -186,6 +194,16 @@ def get_retriever(config: Dict = None) -> Optional[Retriever]:
     elif retriever_type == "sentence_transformer":
         return SentenceTransformerRetriever(config)
     elif retriever_type == "vllm":
-        return vLLMRetriever(config.url, config)
+        return vLLMRetriever(config)
     else:
         raise ValueError(f"Unknown retriever type: {retriever_type}")
+
+if __name__ == "__main__":
+    config = RetrieverConfig(
+        retriever_type="vllm",
+        model_name="/root/shared_planing/LLM_model/Qwen3-Embedding-0.6B",
+        base_url = "http://localhost:8001"
+    )
+    retriever = get_retriever(config)
+    retriever.index(["The capital of France is Paris", "Reranking is fun!", "vLLM is an open-source framework for fast AI serving"])
+    print(retriever.retrieve("What is the capital of France?", 1))
