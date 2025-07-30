@@ -65,13 +65,14 @@ class vLLMReranker(Reranker):
         payload = {
             "model": self.model_name,
             "query": query,
-            "documents": evidence
+            "documents": evidence,
+            "top_n": len(evidence)
         }
 
         response = requests.post(self.base_url, headers=headers, json=payload)
         response.raise_for_status()
         result = response.json()
-        ordered_evidence = [result["results"][i]["document"]["text"] for i in range(len(result["results"]))]
+        ordered_evidence = [result["results"][i]["document"] for i in range(len(result["results"]))]
         return ordered_evidence
 
 
