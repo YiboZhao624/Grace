@@ -38,9 +38,20 @@ def vllm_rerank(base_url: str, model: str, query: str, documents: List[str]):
     print(response.json())
     return zip([response.json()["results"][i]["document"] for i in range(len(documents))], [response.json()["results"][i]["relevance_score"] for i in range(len(documents))])
 
+def vllm_llm(base_url: str, model: str, prompt: str):
+    url = f"{base_url}/v1/chat/completions"
+    headers = {"Content-Type": "application/json"}
+    data = {
+        "model": model,
+        "messages": [{"role": "user", "content": prompt}],
+    }
+    response = requests.post(url, headers=headers, json=data)
+    print(response.json())
+    return response.json()["choices"][0]["message"]["content"]
 
 if __name__ == "__main__":
-    base_url = f"http://localhost:8002" 
-    model = "/root/shared_planing/LLM_model/BAAI-bge-reranker-v2-m3/"
-    res = vllm_rerank(base_url, model, query, documents)
-    print([entry[1] for entry in res])
+    base_url = f"http://localhost:8003" 
+    model = "/root/shared_planing/LLM_model/Qwen2.5-7B-Instruct"
+    prompt = "What is the capital of France?"
+    res = vllm_llm(base_url, model, prompt)
+    print(res)
