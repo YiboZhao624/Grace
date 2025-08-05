@@ -50,6 +50,11 @@ class RerankerConfig:
     device: str = "cuda:7"
     url: str = "http://localhost:8000"
 
+@dataclass
+class LLMConfig:
+    model_name: str = "/root/shared_planing/LLM_model/Qwen3-8B"
+    url: str = "http://localhost:8003"
+
 
 @dataclass
 class Configs:
