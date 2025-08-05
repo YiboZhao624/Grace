@@ -5,6 +5,7 @@ from typing import List, Dict, Optional, Union, Tuple
 from sentence_transformers import SentenceTransformer
 import numpy as np
 import vllm
+import random
 from faiss import IndexFlatL2
 from configs import RetrieverConfig
 import requests
@@ -157,12 +158,6 @@ class vLLMRetriever(Retriever):
         response.raise_for_status()
         result = response.json()
         return np.array([result["data"][i]["embedding"] for i in range(len(result["data"]))])
-        # if isinstance(input_text, str):
-        #     response = self.client.embed(input_text)
-        #     return [response.embeddings[0]]
-        # elif isinstance(input_text, List):
-        #     response = self.client.embed(input_text)
-        #     return response.embeddings
 
     def index(self, data: List[str]):
         self.embeddings = self.call_model(data)
@@ -175,6 +170,28 @@ class vLLMRetriever(Retriever):
         distances, indices = self.faiss_index.search(query_embedding, top_k)
         return [self.data[idx] for idx in indices[0]], [(idx, score) for idx, score in enumerate(distances[0])]
 
+class RandomRetriever(Retriever):
+    def __init__(self, config: RetrieverConfig):
+        super().__init__()
+        self.config = config
+        self.data = []
+        self.faiss_index = None
+        print(f"using the random retriever")
+    
+    def load_model(self):
+        return None
+
+    def reset(self):
+        self.data = []
+    
+    def call_model(self, input_text: Union[str, List]):
+        return None
+
+    def index(self, data: List[str]):
+        self.data = data
+    
+    def retrieve(self, query: str, top_k: int) -> Tuple[List[str], List[Tuple[int, float]]]:
+        return [self.data[random.randint(0, len(self.data)-1)] for _ in range(top_k)], [(idx, 1.0) for idx in range(top_k)]
 
 def get_retriever(config: RetrieverConfig = None) -> Optional[Retriever]:
     """
