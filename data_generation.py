@@ -243,7 +243,13 @@ class QASPERDataGenerator:
         gt_answer = list(set(gt_answer))
         return gt_answer
 
-    def organize_evidence(self, qa_data: Dict) -> List[str]:
+    def organize_evidence(self, qa_data: Dict, gt_evidence_ids: List[int], gt_evidence_text: List[str], entry: dict) -> Tuple[List[str], dict]:
+        '''
+        Note: the retriever has already been indexed (if the retriever is required.)
+        You need to provide the following information:
+        1. get the evidences, and return the evidences in a list of str.
+        2. provide the basic info in the entry.
+        '''
         raise NotImplementedError("You can't directly use the meta class. Subclasses must implement this method")
 
     def manage_chunk_text_list_to_text(self, chunk_text_list: List[str]) -> str:
@@ -271,8 +277,8 @@ class QASPERDataGenerator:
         examples = []
         prev_paper_id = None
         for qa_data in tqdm(self.QA_data, desc="Generating data"):
-            # initialize the retriever.
-            if prev_paper_id != qa_data["paper_id"]:
+            # initialize the retriever, if needed.
+            if self.retriever is not None and prev_paper_id != qa_data["paper_id"]:
                 self.retriever.reset()
                 self.retriever.index(self.paper_data[qa_data["paper_id"]]["chunks"])
                 prev_paper_id = qa_data["paper_id"]
@@ -311,7 +317,7 @@ class QASPERRetrieverDataGenerator(QASPERDataGenerator):
         self.config = config
         # Note: self.QA_data and self.paper_data are already initialized by parent class
 
-    def organize_evidence(self, qa_data: Dict, gt_evidence_ids: List[int], gt_evidence_text: List[str], entry: dict) -> List[str]:
+    def organize_evidence(self, qa_data: Dict, gt_evidence_ids: List[int], gt_evidence_text: List[str], entry: dict) -> Tuple[List[str], dict]:
         # decide whether to create a fake evidence sample.
         # no matter what, retrieve the top k+n chunks first, here, we assume that the number of ground truth evidence chunks won't be larger than 3.
         evidence_texts, retriever_res = self.retriever.retrieve(qa_data["question"], self.config.top_k + 3)
@@ -362,7 +368,7 @@ class QASPEROracleDataGenerator(QASPERDataGenerator):
         self.config = config
         # Note: self.QA_data and self.paper_data are already initialized by parent class
 
-    def organize_evidence(self, qa_data: Dict, gt_evidence_ids: List[int], gt_evidence_text: List[str], entry: dict) -> List[str]:
+    def organize_evidence(self, qa_data: Dict, gt_evidence_ids: List[int], gt_evidence_text: List[str], entry: dict) -> Tuple[List[str], dict]:
         # no need to retrieve the evidence, just use the ground truth evidence.
         entry["extra_info"]["generation_type"] = "gt_evidence"
         entry["extra_info"]["gt_evidence_chunk_ids"] = gt_evidence_ids
@@ -384,7 +390,7 @@ class QASPERRetrieverRerankerDataGenerator(QASPERDataGenerator):
         self.config = config
         # Note: self.QA_data and self.paper_data are already initialized by parent class
 
-    def organize_evidence(self, qa_data: Dict, gt_evidence_ids: List[int], gt_evidence_text: List[str], entry: dict) -> List[str]:
+    def organize_evidence(self, qa_data: Dict, gt_evidence_ids: List[int], gt_evidence_text: List[str], entry: dict) -> Tuple[List[str], dict]:
         # retrieve and rerank the evidence.
         evidence_texts, retriever_res = self.retriever.retrieve(qa_data["question"], self.config.top_k + 3)
         retrieved_ids = [idx for idx, _ in retriever_res]
