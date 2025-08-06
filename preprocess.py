@@ -3,6 +3,9 @@ import json
 import pandas as pd
 import numpy as np
 import random
+from utils import setup_logging
+
+logger = setup_logging("Preprocess")
 
 random.seed(42)
 
@@ -84,14 +87,14 @@ def preprocess_QASPER(data_folder):
     val_QA_data, val_paper_data = process_qasper_data(val_data)
     test_QA_data, test_paper_data = process_qasper_data(test_data)
     
-    print("train QA data: ", len(train_QA_data))
-    print("train paper data: ", len(train_paper_data))
+    logger.info("train QA data: ", len(train_QA_data))
+    logger.info("train paper data: ", len(train_paper_data))
     
-    print("val QA data: ", len(val_QA_data))
-    print("val paper data: ", len(val_paper_data))
+    logger.info("val QA data: ", len(val_QA_data))
+    logger.info("val paper data: ", len(val_paper_data))
     
-    print("test QA data: ", len(test_QA_data))
-    print("test paper data: ", len(test_paper_data))
+    logger.info("test QA data: ", len(test_QA_data))
+    logger.info("test paper data: ", len(test_paper_data))
 
     os.makedirs(os.path.join(data_folder, "train"), exist_ok=True)
     os.makedirs(os.path.join(data_folder, "val"), exist_ok=True)
@@ -111,11 +114,11 @@ def preprocess_QASPER(data_folder):
         json.dump(test_paper_data, f)
     if len(train_QA_data) == 2593 and len(val_QA_data) == 1005\
          and len(train_paper_data) == 888 and len(val_paper_data) == 281:
-        print("correctly preprocessed the QASPER dataset, aligning with the reported data.")
+        logger.info("correctly preprocessed the QASPER dataset, aligning with the reported data.")
     else:
-        print("incorrectly preprocessed the QASPER dataset, not aligning with the reported data.")
+        logger.warning("incorrectly preprocessed the QASPER dataset, not aligning with the reported data.")
     
-    print("preprocess QASPER done")
+    logger.info("preprocess QASPER done")
 
 if __name__ == "__main__":
     preprocess_QASPER("./data/qasper")

@@ -2,6 +2,24 @@ import json
 import os
 from typing import List, Dict
 import pandas as pd
+import logging
+
+# Configure logging
+def setup_logging(level=logging.INFO, log_file=None):
+    """Setup logging configuration"""
+    logging.basicConfig(
+        level=level,
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        datefmt='%H:%M:%S',
+        handlers=[
+            logging.StreamHandler(),  # Console handler
+            *([logging.FileHandler(log_file)] if log_file else [])
+        ],
+    )
+    return logging.getLogger(__name__)
+
+# Create a default logger
+logger = setup_logging()
 
 def load_raw_qasper_data(data_folder: str, split = "train"):
     path = os.path.join(data_folder, split)

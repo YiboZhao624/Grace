@@ -9,6 +9,9 @@ from transformers import AutoTokenizer
 from typing import List, Dict, Any, Tuple, Optional
 from configs import RerankerConfig
 import requests
+from utils import setup_logging
+
+logger = setup_logging("Reranker")
 
 class Reranker:
     '''
@@ -21,6 +24,7 @@ class Reranker:
         self.tokenizer = None
         self.device = None
         self.reranker_client = None
+        logger.error("You are using the meta-class for reranker, please use the specific reranker class.")
 
     def _initialize_model(self):
         raise NotImplementedError("Subclasses must implement this method - _initialize_model")
@@ -47,6 +51,7 @@ class vLLMReranker(Reranker):
         super().__init__(config)
         self.base_url = f"{self.config.base_url}/rerank"
         self.model_name = self.config.model_name
+        logger.info(f"using the vllm reranker {self.model_name} at {self.base_url}")
         
     def rerank(self, evidence: List[str], query: str) -> List[str]:
         '''

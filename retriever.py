@@ -9,10 +9,14 @@ import random
 from faiss import IndexFlatL2
 from configs import RetrieverConfig
 import requests
+from utils import setup_logging
+
+logger = setup_logging("Retriever")
 
 class Retriever:
     def __init__(self):
         self.model = self.load_model()
+        logger.error("You are using the meta-class for retriever, please use the specific retriever class.")
 
     def index(self, data: List):
         raise NotImplementedError("Subclasses must implement this method")
@@ -38,6 +42,7 @@ class BM25Retriever(Retriever):
         self.avgdl = 0
         self.k1 = config.k1
         self.b = config.b
+        logger.info(f"using the bm25 retriever with k1={self.k1} and b={self.b}")
 
     def load_model(self):
         # BM25不需要加载模型，这里返回None
@@ -100,6 +105,7 @@ class SentenceTransformerRetriever(Retriever):
         self.faiss_index = None
         self.model_name = self.config.model_name
         self.device = self.config.device
+        logger.info(f"using the sentence transformer retriever {self.model_name} at {self.device}")
 
     def reset(self):
         self.embeddings = []
@@ -131,7 +137,7 @@ class vLLMRetriever(Retriever):
         self.embeddings = []
         self.data = []
         self.faiss_index = None
-        print(f"using the vllm retriever {self.model_name} at {self.base_url}")
+        logger.info(f"using the vllm retriever {self.model_name} at {self.base_url}")
 
     def load_model(self):
         # there is no need to load model for vllm retriever.
@@ -176,7 +182,7 @@ class RandomRetriever(Retriever):
         self.config = config
         self.data = []
         self.faiss_index = None
-        print(f"using the random retriever")
+        logger.info(f"using the random retriever")
     
     def load_model(self):
         return None

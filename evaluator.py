@@ -7,6 +7,9 @@ import string
 from tqdm import tqdm
 import evaluate
 from custom_reward import reward_function
+from utils import setup_logging
+
+logger = setup_logging("Evaluator")
 
 def remove_articles(text):
     return re.sub(r'\b(a|an|the)\b', ' ', text)
@@ -37,31 +40,31 @@ class Evaluator:
             try:
                 self.Rouge_L_scorer = evaluate.load("rouge")
             except Exception as e:
-                print(f"Error initializing Rouge-L scorer: {e}")
+                logger.error(f"Error initializing Rouge-L scorer: {e}")
                 raise 
         if "BL" in metrics:
             try:
                 self.BLEU_scorer = evaluate.load("bleu")
             except Exception as e:
-                print(f"Error initializing BLEU scorer: {e}")
+                logger.error(f"Error initializing BLEU scorer: {e}")
                 raise 
         if "F1" in metrics:
             try:
                 self.F1_scorer = evaluate.load("f1")
             except Exception as e:
-                print(f"Error initializing F1 scorer: {e}")
+                logger.error(f"Error initializing F1 scorer: {e}")
                 raise 
         if "PR" in metrics:
             try:
                 self.Precision_scorer = evaluate.load("precision")
             except Exception as e:
-                print(f"Error initializing Precision scorer: {e}")
+                logger.error(f"Error initializing Precision scorer: {e}")
                 raise 
         if "RE" in metrics:
             try:
                 self.Recall_scorer = evaluate.load("recall")
             except Exception as e:
-                print(f"Error initializing Recall scorer: {e}")
+                logger.error(f"Error initializing Recall scorer: {e}")
                 raise 
         if "BS" in metrics:
             try:
@@ -69,7 +72,7 @@ class Evaluator:
             except KeyError:
                 raise KeyError("BERT_path is not provided.")
             self.device = kwargs.get("device", "cuda" if torch.cuda.is_available() else "cpu")
-            print(f"Bert Model is loaded on the {self.device} for calculating BERT Score.")
+            logger.info(f"Bert Model is loaded on the {self.device} for calculating BERT Score.")
         self.metrics = list(set(metrics))
 
     def _BLEU(self, answer: str, ground_truth:List[str]) -> float:
@@ -117,7 +120,7 @@ class Evaluator:
                 results[i]["Rouge-L-F1"] = score
 
         if "BS" in self.metrics:
-            print("Computing BERTScore for the batch...")
+            logger.info("Computing BERTScore for the batch...")
             # BERTScore is inherently batch-friendly
             P, R, F1 = bert_score_compute(
                 cands=answers,
@@ -134,7 +137,7 @@ class Evaluator:
                 results[i]["BERTScore-F1"] = F1[i].item()
 
         # --- Per-Sample Metrics ---
-        print("Computing per-sample metrics (BLEU, EM, LLM-Judge)...")
+        logger.info("Computing per-sample metrics (BLEU, EM, LLM-Judge)...")
         for i in tqdm(range(num_samples), desc="Processing samples"):
             if "BL" in self.metrics:
                 results[i]["BLEU-4"] = self._BLEU(answers[i], ground_truths[i])
@@ -155,16 +158,16 @@ if __name__ == '__main__':
 
     # Define which metrics to use
     enabled_metrics: List[Evaluator.METRICS_LITERAL] = ["RL", "BL", "EM", "BS", "LJ"]
-    print(enabled_metrics)
+
     # Initialize the evaluator
     kwargs = {
         "LJ_api": MockLLMAPI(),
         "BERT_path": "bert-base-uncased",
         "device": "cuda:0"
     }
-    print("intializing the Evaluator...")
+
     evaluator = Evaluator(metrics=enabled_metrics, **kwargs)
-    print("Evaluator initialized.")
+
     # Prepare BATCH data (e.g., 3 samples)
     candidate_answers = [
         "The Eiffel Tower is located in Paris, France.",
@@ -188,11 +191,11 @@ if __name__ == '__main__':
     )
 
     # Print the results for each sample in the batch
-    print("\n\n--- Batch Evaluation Results ---")
+    logger.info("\n\n--- Batch Evaluation Results ---")
     for i, scores in enumerate(final_scores_batch):
-        print(f"\n--- Sample {i+1}: '{candidate_answers[i]}' ---")
+        logger.info(f"\n--- Sample {i+1}: '{candidate_answers[i]}' ---")
         for metric, score in scores.items():
             if isinstance(score, float):
-                print(f"  {metric:<15}: {score:.4f}")
+                logger.info(f"  {metric:<15}: {score:.4f}")
             else:
-                print(f"  {metric:<15}: {score}")
+                logger.info(f"  {metric:<15}: {score}")
