@@ -59,7 +59,7 @@ import numpy as np
 from tqdm import tqdm
 from utils import load_raw_qasper_data, merge_by_reverse_removal
 from prompts import Prompt_templates
-from configs import DataGeneratorConfig
+from configs import DataGeneratorConfig, PreprocessConfig, RetrieverConfig, ChunkerConfig, RerankerConfig
 
 def find_evidence_chunks(evidence_texts: List[str], chunks: List[str], threshold: float = 0.8) -> List[int]:
     """
@@ -322,8 +322,11 @@ class QASPERRetrieverDataGenerator(QASPERDataGenerator):
     def organize_evidence(self, qa_data: Dict, gt_evidence_ids: List[int], gt_evidence_text: List[str], entry: dict) -> Tuple[List[str], dict]:
         # decide whether to create a fake evidence sample.
         # no matter what, retrieve the top k+n chunks first, here, we assume that the number of ground truth evidence chunks won't be larger than 3.
+        logger.debug(f"retrieving the evidence for the question: {qa_data['question']}")
+        logger.debug(f"the length of the paper_data is {len(self.paper_data[qa_data['paper_id']]['chunks'])}")
         evidence_texts, retriever_res = self.retriever.retrieve(qa_data["question"], self.config.top_k + 3)
-        retrieved_ids = [idx for idx, _ in retriever_res]
+        retrieved_ids = [idx for idx, _ in retriever_res][:len(self.paper_data[qa_data["paper_id"]]["chunks"])]
+        logger.debug(f"the retrieved ids are: {retrieved_ids}")
         if self.config.split == "train":
             if random.random() < self.config.wo_gt_evidence_rate:
                 entry["extra_info"]["generation_type"] = "wo_gt_evidence"
@@ -397,10 +400,10 @@ class QASPERRetrieverRerankerDataGenerator(QASPERDataGenerator):
         evidence_texts, retriever_res = self.retriever.retrieve(qa_data["question"], self.config.top_k + 3)
         retrieved_ids = [idx for idx, _ in retriever_res]
         evidence_chunks = [self.paper_data[qa_data["paper_id"]]["chunks"][chunk_idx] for chunk_idx in retrieved_ids]
-        reranked_chunks = self.reranker.rerank(qa_data["question"], evidence_chunks)
-        reranked_index = [idx for idx, _ in reranked_chunks]
+        reranked_index, reranked_evidence = self.reranker.rerank(evidence_chunks, qa_data["question"])
         reranked_ids = [retrieved_ids[idx] for idx in reranked_index]
-        reranked_texts = [evidence_texts[idx] for idx in reranked_index]
+        logger.debug(f"the reranked ids are: {reranked_ids}")
+        logger.debug(f"the reranked evidence are: {reranked_evidence}")
 
         if self.config.split == "train":
             # decide if the ground truth evidence is included in the retrieved evidence.
@@ -434,3 +437,24 @@ class QASPERRetrieverRerankerDataGenerator(QASPERDataGenerator):
             # change the evidence chunk ids to chunk content.
             evidence_chunks = [self.paper_data[qa_data["paper_id"]]["chunks"][chunk_idx] for chunk_idx in retrieved_ids]
         return evidence_chunks, entry
+
+
+def get_data_generator(data_generator_config: DataGeneratorConfig, retriever_config: RetrieverConfig, chunker_config: ChunkerConfig, reranker_config: RerankerConfig = None):
+    '''
+    get the data generator according to the configs.
+    '''
+    chunker = get_chunker(chunker_config)
+    if data_generator_config.method == "retriever":
+        retriever = get_retriever(retriever_config)
+        data_generator = QASPERRetrieverDataGenerator(chunker, retriever, data_generator_config)
+    elif data_generator_config.method == "retriever_reranker":
+        retriever = get_retriever(retriever_config)
+        reranker = get_reranker(reranker_config)
+        data_generator = QASPERRetrieverRerankerDataGenerator(chunker, retriever, reranker, data_generator_config)
+    elif data_generator_config.method == "oracle":
+        data_generator = QASPEROracleDataGenerator(chunker, None, data_generator_config)
+    elif data_generator_config.method == "random":
+        raise NotImplementedError("Random data generator is not implemented yet.")
+    else:
+        raise ValueError(f"Unsupported data generator method: {data_generator_config.method}")
+    return data_generator
