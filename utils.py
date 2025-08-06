@@ -44,6 +44,9 @@ def merge_by_reverse_removal(a: list[int], b: list[int]) -> list[int]:
 
     return result
 
+def read_parquet(path: str) -> List[Dict]:
+    return pd.read_parquet(path)
+
 if __name__ == "__main__":
     b = [4, 17, 52, 6]
     a = [3,4,17,73,5,8,10,6]
