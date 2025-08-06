@@ -3,6 +3,25 @@ import os
 from typing import List, Dict
 import pandas as pd
 import logging
+import re
+
+def extract_evidence_or_all(text:str):
+    # if the text contains <evidence>...</evidence> tag, return the evidence.
+    # else, return the text.
+    match = re.search(r"<evidence>(.*?)</evidence>", text, re.DOTALL)
+    if match:
+        return match.group(1)
+    else:
+        return text
+
+def extract_answer_or_all(text:str):
+    # if the text contains <answer>...</answer> tag, return the answer.
+    # else, return the text.
+    match = re.search(r"<answer>(.*?)</answer>", text, re.DOTALL)
+    if match:
+        return match.group(1)
+    else:
+        return text
 
 # Configure logging
 def setup_logging(level=logging.INFO, log_file=None):
