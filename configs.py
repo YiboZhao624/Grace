@@ -71,7 +71,7 @@ class InferenceConfigs:
     prompt_template: str = "default"
     number_template: bool = False
     # For evaluation.
-    metrics: List[str] = field(default_factory=lambda: ["RL", "BL", "EM", "F1", "PR", "RE", "BS", "LJ", "RR"])
+    metrics: List[str] = field(default_factory=lambda: ["RL", "BL", "EM", "BS", "LJ", "RR"])
     # For LJ, we need to provide the LLM API.
     LJ_api: LLM = field(default_factory=lambda: GPT(LLMConfig()))
     # Due to we have already built the dataset with retrieved evidence, we don't need to retrieve evidence again.
