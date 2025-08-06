@@ -225,6 +225,8 @@ class QASPERDataGenerator:
     def _get_gt_evidence(self, qa_data: Dict) -> Tuple[List[int], List[str]]:
         '''
         process the ground truth evidence, because there are several annotators for each QA pair, we take the union of the evidence chunk ids.
+        Although we evaluate the model chose evidence on the token level, we still return the chunk ids.
+        This is designed to check if the retrieved chunks includes the ground truth evidence.
         '''
         gt_evidence_idx = []
         gt_evidence_text = []
