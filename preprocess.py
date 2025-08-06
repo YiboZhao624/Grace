@@ -87,14 +87,14 @@ def preprocess_QASPER(data_folder):
     val_QA_data, val_paper_data = process_qasper_data(val_data)
     test_QA_data, test_paper_data = process_qasper_data(test_data)
     
-    logger.info("train QA data: ", len(train_QA_data))
-    logger.info("train paper data: ", len(train_paper_data))
+    logger.info(f"train QA data: {len(train_QA_data)}")
+    logger.info(f"train paper data: {len(train_paper_data)}")
     
-    logger.info("val QA data: ", len(val_QA_data))
-    logger.info("val paper data: ", len(val_paper_data))
+    logger.info(f"val QA data: {len(val_QA_data)}")
+    logger.info(f"val paper data: {len(val_paper_data)}")
     
-    logger.info("test QA data: ", len(test_QA_data))
-    logger.info("test paper data: ", len(test_paper_data))
+    logger.info(f"test QA data: {len(test_QA_data)}")
+    logger.info(f"test paper data: {len(test_paper_data)}")
 
     os.makedirs(os.path.join(data_folder, "train"), exist_ok=True)
     os.makedirs(os.path.join(data_folder, "val"), exist_ok=True)
