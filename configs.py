@@ -1,5 +1,6 @@
 from dataclasses import dataclass, field
-from typing import List
+from typing import List, Literal
+from llm import LLM, GPT, vLLM
 
 @dataclass
 class PreprocessConfig:
@@ -11,7 +12,7 @@ class PreprocessConfig:
 # here we don't distinguish them.
 @dataclass
 class RetrieverConfig:
-    retriever_type: str = "bm25"
+    retriever_type: str = "bm25" # or sentence-transformer, or vLLM, or random
     # BM25 parameters
     k1: float = 1.5
     b: float = 0.75
@@ -33,9 +34,10 @@ class ChunkerConfig:
 
 @dataclass
 class DataGeneratorConfig:
-    dataset: list = field(default_factory=lambda: ["qasper"])
+    # the configs for generating dataset, including train/dev/test split.
+    dataset: List[str] = field(default_factory=lambda: ["qasper"])
     data_folder: str = "./data/qasper"
-    split: str = "train"
+    split: Literal["train", "dev", "test"] = "train"
     top_k: int = 5
     wo_gt_evidence_rate: float = 0.2
     prompt_template: str = "default"
@@ -45,20 +47,32 @@ class DataGeneratorConfig:
 
 @dataclass
 class RerankerConfig:
+    # the configs for initializing the reranker. We only support vLLM for now.
+    # To support transformers-based reranker, please modify the reranker.py file.
     reranker_type: str = "vllm"
-    model_name: str = "/root/shared_planing/LLM_model/Qwen3-Embedding-4B"
+    model_name: str = "/root/shared_planing/LLM_model/BAAI-bge-reranker-v2-m3/"
     device: str = "cuda:7"
     url: str = "http://localhost:8000"
 
 @dataclass
 class LLMConfig:
+    # compatible with vLLM and GPT, for GPT, the url is not used as we deployed the openai package.
     model_name: str = "/root/shared_planing/LLM_model/Qwen3-8B"
     url: str = "http://localhost:8003"
 
 
 @dataclass
-class Configs:
-    preprocess_config: PreprocessConfig
-    retriever_config: RetrieverConfig
-    chunker_config: ChunkerConfig
-    data_generator_config: DataGeneratorConfig
+class InferenceConfigs:
+    # For initializing the LLM.
+    llm_config: LLMConfig = LLMConfig()
+    # Dataset for inference.
+    data_path: str = "./data/processed/QASPER-3-methods-1000-samples-0805.parquet"
+    # see prompts.py for more details.
+    prompt_template: str = "default"
+    number_template: bool = False
+    # For evaluation.
+    metrics: List[str] = field(default_factory=lambda: ["RL", "BL", "EM", "F1", "PR", "RE", "BS", "LJ", "RR"])
+    # For LJ, we need to provide the LLM API.
+    LJ_api: LLM = field(default_factory=lambda: GPT(LLMConfig()))
+    # Due to we have already built the dataset with retrieved evidence, we don't need to retrieve evidence again.
+    # therefore the retriever and reranker are not involved.
