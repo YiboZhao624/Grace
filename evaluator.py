@@ -6,6 +6,7 @@ import re
 import string
 from tqdm import tqdm
 import evaluate
+from custom_reward import reward_function
 
 def remove_articles(text):
     return re.sub(r'\b(a|an|the)\b', ' ', text)
@@ -71,17 +72,16 @@ class Evaluator:
             print(f"Bert Model is loaded on the {self.device} for calculating BERT Score.")
         self.metrics = list(set(metrics))
 
-    def _BLEU(self, answer: List[str], ground_truth: List[List[str]]) -> float:
-        return self.BLEU_scorer.compute(predictions=answer, references=ground_truth)["bleu"]
+    def _BLEU(self, answer: str, ground_truth:List[str]) -> float:
+        return self.BLEU_scorer.compute(predictions=[answer], references=[ground_truth])["bleu"]
 
-    def _Exact_Match(self, answer: List[str], ground_truth: List[List[str]]) -> int:
+    def _Exact_Match(self, answer: str, ground_truth: List[str]) -> int:
         total = 0
-        for i in range(len(answer)):
-            for gt in ground_truth[i]:
-                if white_space_fix(remove_articles(handle_punc(lower(replace_underscore(answer[i]))))).strip() == white_space_fix(remove_articles(handle_punc(lower(replace_underscore(gt))))).strip():
-                    total += 1
-                    break
-        return total / len(answer)
+        for gt in ground_truth:
+            if white_space_fix(remove_articles(handle_punc(lower(replace_underscore(answer))))).strip() == white_space_fix(remove_articles(handle_punc(lower(replace_underscore(gt))))).strip():
+                total += 1
+                break
+        return total
     
     def _F1_score(self, answer: List[str], ground_truth: List[List[str]]) -> float:
         return self.F1_scorer.compute(predictions=[answer], references=[ground_truth])["f1"]
@@ -97,6 +97,9 @@ class Evaluator:
         LLM_Judge_prompt += '\n\n\n\n*************Here is the model\'s response:*************\n' + answer
         LLM_Judge_prompt += '\n\n\n\n*************Please check if the model\'s answer is correct. As long as the model\'s answer hits any item (or synonym) in the correct answer list, it can be considered correct. You only need to answer "yes" or "no".*************'
         return 1 if self.gpt.generate(LLM_Judge_prompt).lower() == "yes" else 0
+
+    def _RR(self, answer: str, ground_truth: List[str]) -> float:
+        return self.RR_scorer.compute(predictions=[answer], references=[ground_truth])["RR"]
 
     def evaluate(self, answers: List[str], ground_truths: List[List[str]]) -> dict:
         if len(answers) != len(ground_truths):
@@ -139,36 +142,43 @@ class Evaluator:
                 results[i]["Exact Match"] = self._Exact_Match(answers[i], ground_truths[i])
             if "LJ" in self.metrics:
                 results[i]["LLM-as-a-Judge"] = self._LLM_Judge(answers[i], ground_truths[i])
+            if "RR" in self.metrics:
+                results[i]["RR"] = self._RR(answers[i], ground_truths[i])
 
         return results
 
 if __name__ == '__main__':
     # Mock API for LLM-as-a-Judge for demonstration purposes
     class MockLLMAPI:
-        def call(self, prompt, api_key):
+        def generate(self, prompt):
             return "yes"
 
     # Define which metrics to use
     enabled_metrics: List[Evaluator.METRICS_LITERAL] = ["RL", "BL", "EM", "BS", "LJ"]
+    print(enabled_metrics)
     # Initialize the evaluator
     kwargs = {
         "LJ_api": MockLLMAPI(),
-        "BERT_path": "./Roberta-large",
+        "BERT_path": "bert-base-uncased",
         "device": "cuda:0"
     }
-
+    print("intializing the Evaluator...")
     evaluator = Evaluator(metrics=enabled_metrics, **kwargs)
-
+    print("Evaluator initialized.")
     # Prepare BATCH data (e.g., 3 samples)
     candidate_answers = [
         "The Eiffel Tower is located in Paris, France.",
         "The capital of Japan is Tokyo.",
-        "The earth is flat."
+        "The earth is flat.",
+        "The capital of China is Beijing.",
+        "Jackie Chan"
     ]
     ground_truth_answers = [
         ["The Eiffel Tower is in Paris.", "Paris is the location of the Eiffel Tower."],
         ["Tokyo is the capital city of Japan."],
-        ["The world is a sphere.", "The earth is round."]
+        ["The world is a sphere.", "The earth is round."],
+        ["The capital of China is Beijing."],
+        ["Green Table."]
     ]
 
     # Run the evaluation on the entire batch
@@ -186,4 +196,3 @@ if __name__ == '__main__':
                 print(f"  {metric:<15}: {score:.4f}")
             else:
                 print(f"  {metric:<15}: {score}")
-            
