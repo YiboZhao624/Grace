@@ -1,6 +1,5 @@
 from dataclasses import dataclass, field
 from typing import List, Literal
-from llm import LLM, GPT, vLLM
 
 @dataclass
 class PreprocessConfig:
@@ -17,7 +16,7 @@ class RetrieverConfig:
     k1: float = 1.5
     b: float = 0.75
     # sentence-transformer parameters
-    model_name: str = "/root/shared_planing/LLM_model/Qwen3-Embedding-4B"
+    model_name: str = "/root/shared_planing/LLM_model/Qwen3-Embedding-0.6B"
     device: str = "cuda:7"
     # vLLM parameters, model_name is shared with sentence-transformer.
     base_url: str = "http://localhost:8000"
@@ -38,6 +37,7 @@ class DataGeneratorConfig:
     dataset: List[str] = field(default_factory=lambda: ["qasper"])
     data_folder: str = "./data/qasper"
     split: Literal["train", "dev", "test"] = "train"
+    method: Literal["retriever", "retriever_reranker", "oracle","random"] = "retriever"
     top_k: int = 5
     wo_gt_evidence_rate: float = 0.2
     prompt_template: str = "default"
@@ -52,7 +52,7 @@ class RerankerConfig:
     reranker_type: str = "vllm"
     model_name: str = "/root/shared_planing/LLM_model/BAAI-bge-reranker-v2-m3/"
     device: str = "cuda:7"
-    url: str = "http://localhost:8000"
+    base_url: str = "http://localhost:8000"
 
 @dataclass
 class LLMConfig:
@@ -64,7 +64,7 @@ class LLMConfig:
 @dataclass
 class InferenceConfigs:
     # For initializing the LLM.
-    llm_config: LLMConfig = LLMConfig()
+    llm_config: LLMConfig = field(default_factory=lambda: LLMConfig())
     # Dataset for inference.
     data_path: str = "./data/processed/QASPER-3-methods-1000-samples-0805.parquet"
     # see prompts.py for more details.
@@ -73,6 +73,6 @@ class InferenceConfigs:
     # For evaluation.
     metrics: List[str] = field(default_factory=lambda: ["RL", "BL", "EM", "BS", "LJ", "RR"])
     # For LJ, we need to provide the LLM API.
-    LJ_api: LLM = field(default_factory=lambda: GPT(LLMConfig()))
+    LJ_api: LLMConfig = field(default_factory=lambda: LLMConfig())
     # Due to we have already built the dataset with retrieved evidence, we don't need to retrieve evidence again.
     # therefore the retriever and reranker are not involved.
