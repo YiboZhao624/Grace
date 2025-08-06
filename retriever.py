@@ -16,7 +16,6 @@ logger = setup_logging("Retriever")
 class Retriever:
     def __init__(self):
         self.model = self.load_model()
-        logger.error("You are using the meta-class for retriever, please use the specific retriever class.")
 
     def index(self, data: List):
         raise NotImplementedError("Subclasses must implement this method")
@@ -36,6 +35,7 @@ class BM25Retriever(Retriever):
         # 调用父类构造函数
         super().__init__()
         # 初始化文档和倒排索引
+        self.retriever_type = "bm25"
         self.documents = []
         self.inverted_index = {}
         self.doc_freq = {}
@@ -105,6 +105,7 @@ class SentenceTransformerRetriever(Retriever):
         self.faiss_index = None
         self.model_name = self.config.model_name
         self.device = self.config.device
+        self.retriever_type = f"sentence_transformer-{self.model_name.split("/")[-1]}"
         logger.info(f"using the sentence transformer retriever {self.model_name} at {self.device}")
 
     def reset(self):
@@ -137,6 +138,7 @@ class vLLMRetriever(Retriever):
         self.embeddings = []
         self.data = []
         self.faiss_index = None
+        self.retriever_type = f"vllm-{self.model_name.split("/")[-1]}"
         logger.info(f"using the vllm retriever {self.model_name} at {self.base_url}")
 
     def load_model(self):
@@ -147,6 +149,7 @@ class vLLMRetriever(Retriever):
         self.embeddings = []
         self.data = []
         self.faiss_index = None
+        logger.debug(f"reset the vllm retriever {self.model_name} at {self.base_url}")
     
     def call_model(self, input_text:Union[str, List[str]]) -> List[np.ndarray]:
         if isinstance(input_text, str):
@@ -170,11 +173,12 @@ class vLLMRetriever(Retriever):
         self.data = data
         self.faiss_index = IndexFlatL2(self.embeddings.shape[1])
         self.faiss_index.add(self.embeddings)
+        logger.debug(f"indexed the vllm retriever {self.model_name} at {self.base_url} with {len(data)} chunks")
     
     def retrieve(self, query: str, top_k: int) -> Tuple[List[str], List[Tuple[int, float]]]:
-        query_embedding = self.call_model(query)
+        query_embedding = self.call_model(query) # since the faiss need n,d, a 2-D array, there is no need to change the dimension.
         distances, indices = self.faiss_index.search(query_embedding, top_k)
-        return [self.data[idx] for idx in indices[0]], [(idx, score) for idx, score in enumerate(distances[0])]
+        return [self.data[idx] for idx in indices[0]], [(idx, score) for idx, score in zip(indices[0], distances[0])]
 
 class RandomRetriever(Retriever):
     def __init__(self, config: RetrieverConfig):
@@ -182,6 +186,7 @@ class RandomRetriever(Retriever):
         self.config = config
         self.data = []
         self.faiss_index = None
+        self.retriever_type = "random"
         logger.info(f"using the random retriever")
     
     def load_model(self):
