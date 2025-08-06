@@ -36,7 +36,7 @@ class DataGeneratorConfig:
     # the configs for generating dataset, including train/dev/test split.
     dataset: List[str] = field(default_factory=lambda: ["qasper"])
     data_folder: str = "./data/qasper"
-    split: Literal["train", "dev", "test"] = "train"
+    split: Literal["train", "val", "test"] = "train"
     method: Literal["retriever", "retriever_reranker", "oracle","random"] = "retriever"
     top_k: int = 5
     wo_gt_evidence_rate: float = 0.2
@@ -66,7 +66,7 @@ class InferenceConfigs:
     # For initializing the LLM.
     llm_config: LLMConfig = field(default_factory=lambda: LLMConfig())
     # Dataset for inference.
-    data_path: str = "./data/processed/QASPER-3-methods-1000-samples-0805.parquet"
+    data_path: List[str] = field(default_factory=lambda: ["./data/processed/QASPER-3-methods-1000-samples-0805.parquet"])
     # see prompts.py for more details.
     prompt_template: str = "default"
     number_template: bool = False
