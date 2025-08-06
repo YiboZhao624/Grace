@@ -49,10 +49,10 @@ class vLLMReranker(Reranker):
     '''
     def __init__(self, config: RerankerConfig):
         super().__init__(config)
-        self.base_url = f"{self.config.base_url}/rerank"
+        self.base_url = f"{self.config.base_url}/v1/rerank"
         self.model_name = self.config.model_name
         logger.info(f"using the vllm reranker {self.model_name} at {self.base_url}")
-        
+
     def rerank(self, evidence: List[str], query: str) -> List[str]:
         '''
         This method is used to rerank the evidence.
@@ -78,7 +78,8 @@ class vLLMReranker(Reranker):
         response.raise_for_status()
         result = response.json()
         ordered_evidence = [result["results"][i]["document"] for i in range(len(result["results"]))]
-        return ordered_evidence
+        reranked_index = [result["results"][i]["index"] for i in range(len(result["results"]))]
+        return reranked_index, ordered_evidence
 
 
 class TransformersReranker(Reranker):
@@ -89,3 +90,15 @@ class TransformersReranker(Reranker):
     def __init__(self, config: RerankerConfig):
         super().__init__(config)
         raise NotImplementedError("Subclasses must implement this method - TransformersReranker")
+
+
+def get_reranker(reranker_config: RerankerConfig):
+    '''
+    get the reranker according to the configs.
+    '''
+    if reranker_config.reranker_type == "vllm":
+        return vLLMReranker(reranker_config)
+    elif reranker_config.reranker_type == "transformers":
+        return TransformersReranker(reranker_config)
+    else:
+        raise ValueError(f"Unsupported reranker type: {reranker_config.reranker_type}")
