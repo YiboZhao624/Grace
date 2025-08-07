@@ -10,6 +10,10 @@ from configs import LLMConfig
 import requests
 import os
 import openai
+from utils import setup_logging
+from typing import Union
+
+logger = setup_logging("LLM")
 
 class LLM:
     def __init__(self, config: LLMConfig):
@@ -24,15 +28,38 @@ class vLLM(LLM):
         self.base_url = config.url
         self.model_name = config.model_name
 
-    def generate(self, user_input:dict, sys_prompt:dict = None) -> str:
+    def generate(self, user_input:Union[dict, str], sys_prompt:Union[dict, str] = None) -> str:
         url = f"{self.base_url}/v1/chat/completions"
         headers = {"Content-Type": "application/json"}
+        messages = []
+        if isinstance(sys_prompt, dict):
+            messages.append(sys_prompt)
+        elif isinstance(sys_prompt, str):
+            messages.append({"role": "system", "content": sys_prompt})
+        if isinstance(user_input, dict):
+            messages.append(user_input)
+        elif isinstance(user_input, str):
+            messages.append({"role": "user", "content": user_input})
+        else:
+            raise ValueError(f"Invalid user input type: {type(user_input)}")
         data = {
             "model": self.model_name,
-            "messages": [sys_prompt, user_input],
+            "messages": messages,
         }
-        response = requests.post(url, headers=headers, json=data)
-        return response.json()["choices"][0]["message"]["content"].strip()
+        try:
+            response = requests.post(url, headers=headers, json=data)
+            response.raise_for_status()  # 如果状态码是 4xx 或 5xx，则抛出异常
+            response_json = response.json()
+            content = response_json["choices"][0]["message"]["content"]
+            return content.strip()
+
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Error: Network request failed: {e}")
+            return "ERROR: THE MODEL CANNOT PROCESS THE REQUEST."
+        except (KeyError, IndexError) as e:
+            logger.error(f"Error: Could not parse the response JSON: {e}")
+            logger.error(f"Received response: {response.text}")
+            return "ERROR: THE MODEL CANNOT PROCESS THE REQUEST."
 
 class GPT(LLM):
     def __init__(self, config: LLMConfig):
