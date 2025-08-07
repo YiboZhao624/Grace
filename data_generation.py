@@ -61,6 +61,9 @@ from utils import load_raw_qasper_data, merge_by_reverse_removal
 from prompts import Prompt_templates
 from configs import DataGeneratorConfig, PreprocessConfig, RetrieverConfig, ChunkerConfig, RerankerConfig
 
+random.seed(42)
+
+
 def find_evidence_chunks(evidence_texts: List[str], chunks: List[str], threshold: float = 0.8) -> List[int]:
     """
     find the chunk indices that contain the evidence.
@@ -121,7 +124,7 @@ class QASPERDataGenerator:
         self.retriever = retriever
         self.data_folder = config.data_folder
         self.paper_data = None
-        self.QA_data = None
+        self.QA_data:list[Dict] = []
         self.load_data()
 
     def load_data(self) -> Tuple[Dict, Dict]:
@@ -275,6 +278,14 @@ class QASPERDataGenerator:
         # 3. save the data.
         top_k = self.config.top_k
         wo_gt_evidence_rate = self.config.wo_gt_evidence_rate
+        if self.config.split == "train":
+            wo_gt_evidence_entries = random.sample(self.QA_data, int(len(self.QA_data) * wo_gt_evidence_rate))
+            for qa in self.QA_data:
+                if qa in wo_gt_evidence_entries:
+                    qa["gt_evidence"] = False
+                else:
+                    qa["gt_evidence"] = True
+            logger.info(f"the number of the entries without ground truth evidence is {wo_gt_evidence_rate}*{len(self.QA_data)} = {len(wo_gt_evidence_entries)}")
 
         examples = []
         prev_paper_id = None
@@ -328,7 +339,7 @@ class QASPERRetrieverDataGenerator(QASPERDataGenerator):
         retrieved_ids = [idx for idx, _ in retriever_res][:len(self.paper_data[qa_data["paper_id"]]["chunks"])]
         logger.debug(f"the retrieved ids are: {retrieved_ids}")
         if self.config.split == "train":
-            if random.random() < self.config.wo_gt_evidence_rate:
+            if qa_data["gt_evidence"] == False:
                 entry["extra_info"]["generation_type"] = "wo_gt_evidence"
                 # choose the evidence not in ground truth.
                 final_evidence_ids = [idx for idx in retrieved_ids if idx not in gt_evidence_ids]
@@ -407,7 +418,7 @@ class QASPERRetrieverRerankerDataGenerator(QASPERDataGenerator):
 
         if self.config.split == "train":
             # decide if the ground truth evidence is included in the retrieved evidence.
-            if random.random() < self.config.wo_gt_evidence_rate:
+            if qa_data["gt_evidence"] == False:
                 entry["extra_info"]["generation_type"] = "wo_gt_evidence"
                 # choose the evidence not in ground truth.
                 final_evidence_ids = [idx for idx in reranked_ids if idx not in gt_evidence_ids]
