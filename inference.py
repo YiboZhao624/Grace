@@ -7,7 +7,7 @@ from configs import InferenceConfigs
 from typing import List, Dict, Literal
 from evaluator import Evaluator
 import json
-
+from tqdm import tqdm
 
 logger = setup_logging("Inference")
 
@@ -17,42 +17,45 @@ custom_InferenceConfigs = InferenceConfigs(
 custom_llm = vLLM(custom_InferenceConfigs.llm_config)
 
 def inference(data: List[Dict]):
-    for item in data:
-        input_prompt = item["prompt"]
-        answer = custom_llm.generate(input_prompt)
+    for item in tqdm(data, desc="Inference"):
+        sys_prompt = item["prompt"][0]
+        user_input = item["prompt"][1]
+        answer = custom_llm.generate(user_input, sys_prompt)
         item["answer"] = answer
     return data
 
 
 if __name__ == "__main__":
-    data = read_parquet(custom_InferenceConfigs.data_path)
-    inference(data)
-    save_parquet(data, custom_InferenceConfigs.data_path)
-    logger.info(f"inference done, the data is saved to {custom_InferenceConfigs.data_path}")
-    logger.info(f"the first data is: {data[0]}")
-    
-    enabled_metrics = ["BS","EM","RL","BL","RR"]
-    kwargs = {
-        "BERT_path": "bert-base-uncased",
-        "device": "cuda:0"
-    }
-    evaluator = Evaluator(metrics=enabled_metrics, **kwargs)
-    full_answers = [item["answer"] for item in data]
-    chosen_evidences = [extract_evidence_or_all(item["answer"]) for item in data]
-    answers = [extract_answer_or_all(item["answer"]) for item in data]
-    ground_truths = [item["ground_truth"] for item in data]
-    ground_truth_evidences = [item["ground_truth_evidences"] for item in data]
-    answer_results, evidence_results, reward_results = evaluator.evaluate(full_answers, chosen_evidences, answers, ground_truths, ground_truth_evidences)
+    for data_path in custom_InferenceConfigs.data_path:
+        data = read_parquet(data_path)
+        logger.info(f"inference {data_path} now.")
+        inference(data)
+        save_parquet(data, data_path.replace(".parquet", "_inference.parquet"))
+        logger.info(f"inference done, the data is saved to {data_path.replace('.parquet', '_inference.parquet')}")
+        logger.info(f"the first data is: {data[0]}")
+        
+        enabled_metrics = ["BS","EM","RL","BL","RR"]
+        kwargs = {
+            "BERT_path": "bert-base-uncased",
+            "device": "cuda:0"
+        }
+        evaluator = Evaluator(metrics=enabled_metrics, **kwargs)
+        full_answers = [item["answer"] for item in data]
+        chosen_evidences = [extract_evidence_or_all(item["answer"]) for item in data]
+        answers = [extract_answer_or_all(item["answer"]) for item in data]
+        ground_truths = [item["ground_truth"] for item in data]
+        ground_truth_evidences = [item["ground_truth_evidences"] for item in data]
+        answer_results, evidence_results, reward_results = evaluator.evaluate(full_answers, chosen_evidences, answers, ground_truths, ground_truth_evidences)
 
-    # aggregate the results in each dict.
-    for key, value in answer_results.items():
-        answer_results[key] = sum(value) / len(value)
-    for key, value in evidence_results.items():
-        evidence_results[key] = sum(value) / len(value)
-    for key, value in reward_results.items():
-        reward_results[key] = sum(value) / len(value)
-    
-    with open("answer_results.json", "w") as f:
-        json.dump(answer_results, f, indent=4)
-    with open("evidence_results.json", "w") as f:
-        json.dump(evidence_results, f, indent=4)
+        # aggregate the results in each dict.
+        for key, value in answer_results.items():
+            answer_results[key] = sum(value) / len(value)
+        for key, value in evidence_results.items():
+            evidence_results[key] = sum(value) / len(value)
+        for key, value in reward_results.items():
+            reward_results[key] = sum(value) / len(value)
+        
+        with open("answer_results.json", "w") as f:
+            json.dump(answer_results, f, indent=4)
+        with open("evidence_results.json", "w") as f:
+            json.dump(evidence_results, f, indent=4)
