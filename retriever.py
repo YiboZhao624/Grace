@@ -21,6 +21,9 @@ class Retriever:
         raise NotImplementedError("Subclasses must implement this method")
 
     def retrieve(self, query: str, top_k: int) -> Tuple[List[str], List[Tuple[int, float]]]:
+        # it should return two vars.
+        # 1. a list of retrieved string.
+        # 2. a list of Tuple, each element includes the index and the ranking score.
         raise NotImplementedError("Subclasses must implement this method")
 
     def load_model(self):
@@ -91,9 +94,9 @@ class BM25Retriever(Retriever):
                 score = idf * freq * (self.k1 + 1) / denom if denom != 0 else 0
                 scores[doc_id] += score
         # 获取分数最高的top_k个文档
-        ranked = sorted(enumerate(scores), key=lambda x: x[1], reverse=True)
-        top_indices = [idx for idx, _ in ranked[:top_k]]
-        return [self.documents[idx] for idx in top_indices], ranked
+        ranked = sorted(enumerate(scores), key=lambda x: x[1], reverse=True)[:top_k]
+        top_indices = [idx for idx, _ in ranked]
+        return [self.documents[idx] for idx in top_indices], [(idx, score) for idx, score in ranked]
 
 class SentenceTransformerRetriever(Retriever):
     def __init__(self, config: RetrieverConfig):
