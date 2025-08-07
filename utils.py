@@ -82,7 +82,7 @@ def merge_by_reverse_removal(a: list[int], b: list[int]) -> list[int]:
     return result
 
 def read_parquet(path: str) -> List[Dict]:
-    return pd.read_parquet(path)
+    return pd.read_parquet(path).to_dict(orient="records")
 
 if __name__ == "__main__":
     b = [4, 17, 52, 6]
