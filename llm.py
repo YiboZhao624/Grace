@@ -24,16 +24,15 @@ class vLLM(LLM):
         self.base_url = config.url
         self.model_name = config.model_name
 
-    def generate(self, prompt:str) -> str:
+    def generate(self, user_input:dict, sys_prompt:dict = None) -> str:
         url = f"{self.base_url}/v1/chat/completions"
         headers = {"Content-Type": "application/json"}
         data = {
             "model": self.model_name,
-            "messages": [{"role": "user", "content": prompt}],
+            "messages": [sys_prompt, user_input],
         }
         response = requests.post(url, headers=headers, json=data)
-        print(response.json())
-        return response.json()["choices"][0]["message"]["content"]
+        return response.json()["choices"][0]["message"]["content"].strip()
 
 class GPT(LLM):
     def __init__(self, config: LLMConfig):
