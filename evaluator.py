@@ -1,4 +1,5 @@
-from typing import List, Literal
+from typing import List, Literal, Union
+import os
 from rouge_score import rouge_scorer
 from bert_score import score as bert_score_compute
 import torch
@@ -6,7 +7,6 @@ import re
 import copy
 import string
 from tqdm import tqdm
-import evaluate
 from custom_reward import reward_function
 from utils import setup_logging
 
@@ -32,52 +32,115 @@ def replace_underscore(text):
 class Evaluator:
     METRICS_LITERAL = Literal["RL", "BL", "EM", "F1", "PR", "RE", "BS", "LJ", "RR"]
     def __init__(self, metrics: List[METRICS_LITERAL], **kwargs):
-        if "LJ" in metrics:
+        # Instance-local view
+        self._metric_names = set(metrics)
+        self.metrics = list(self._metric_names)
+
+        # Optional LLM-as-a-Judge API
+        if "LJ" in self._metric_names:
             try:
                 self.gpt = kwargs["LJ_api"]
             except KeyError:
                 raise KeyError("LLM-as-a-Judge(LJ) is included in the metrics, but the LLM api(callable) is not provided.")
-        if "RL" in metrics:
-            try:
-                self.Rouge_L_scorer = evaluate.load("rouge")
-            except Exception as e:
-                logger.error(f"Error initializing Rouge-L scorer: {e}")
-                raise 
-        if "BL" in metrics:
-            try:
-                self.BLEU_scorer = evaluate.load("bleu")
-            except Exception as e:
-                logger.error(f"Error initializing BLEU scorer: {e}")
-                raise 
-        if "F1" in metrics:
-            try:
-                self.F1_scorer = evaluate.load("f1")
-            except Exception as e:
-                logger.error(f"Error initializing F1 scorer: {e}")
-                raise 
-        if "PR" in metrics:
-            try:
-                self.Precision_scorer = evaluate.load("precision")
-            except Exception as e:
-                logger.error(f"Error initializing Precision scorer: {e}")
-                raise 
-        if "RE" in metrics:
-            try:
-                self.Recall_scorer = evaluate.load("recall")
-            except Exception as e:
-                logger.error(f"Error initializing Recall scorer: {e}")
-                raise 
-        if "BS" in metrics:
+
+        # BERTScore config (lazy model load happens inside bert_score_compute on first call)
+        if "BS" in self._metric_names:
             try:
                 self.BERT_path = kwargs["BERT_path"]
             except KeyError:
                 raise KeyError("BERT_path is not provided.")
             self.device = kwargs.get("device", "cuda" if torch.cuda.is_available() else "cpu")
-            logger.info(f"Bert Model is loaded on the {self.device} for calculating BERT Score.")
-        self.metrics = list(set(metrics))
+            logger.info(f"BERTScore will run on device: {self.device}")
+
+            # Enable offline mode by default to avoid accidental network calls
+            self.offline = kwargs.get("offline", True)
+            self.skip_bs_on_error = kwargs.get("skip_bs_on_error", True)
+            if self.offline:
+                os.environ.setdefault("HF_HUB_OFFLINE", "1")
+                os.environ.setdefault("TRANSFORMERS_OFFLINE", "1")
+                os.environ.setdefault("HF_DATASETS_OFFLINE", "1")
+                os.environ.setdefault("HF_HUB_DISABLE_TELEMETRY", "1")
+            # Check if the provided path is a local directory (so we can safely use it offline)
+            self._bert_path_is_local_dir = os.path.isdir(self.BERT_path)
+
+        # Global ROUGE scorer (native library), instantiated once per process
+        if not hasattr(Evaluator, "_ROUGE_SCORER"):
+            Evaluator._ROUGE_SCORER = rouge_scorer.RougeScorer(["rougeL"], use_stemmer=True)
+
+    # -------------------------
+    # Native metric implementations
+    # -------------------------
+    def _get_tokens(self, text: str) -> List[str]:
+        normalized = white_space_fix(
+            remove_articles(handle_punc(lower(replace_underscore(text))))
+        )
+        if not normalized:
+            return []
+        return normalized.split()
+
+    def _sentence_bleu(self, cand: str, refs: List[str], max_order: int = 4, smooth: bool = True) -> float:
+        # Simple BLEU (up to 4-gram) with smoothing, single hypothesis vs multiple references
+        cand_tokens = self._get_tokens(cand)
+        refs_tokens = [self._get_tokens(r) for r in refs]
+        if len(cand_tokens) == 0:
+            return 0.0
+
+        # Brevity penalty
+        cand_len = len(cand_tokens)
+        ref_lens = [len(rt) for rt in refs_tokens]
+        if not ref_lens:
+            return 0.0
+        closest_ref_len = min(ref_lens, key=lambda rl: (abs(rl - cand_len), rl))
+        if cand_len > 0:
+            bp = 1.0 if cand_len > closest_ref_len else (pow(2.718281828, 1 - closest_ref_len / cand_len))
+        else:
+            bp = 0.0
+
+        precisions = []
+        for n in range(1, max_order + 1):
+            # Count n-grams in candidate
+            cand_ngrams = {}
+            for i in range(0, max(0, cand_len - n + 1)):
+                ng = tuple(cand_tokens[i:i + n])
+                cand_ngrams[ng] = cand_ngrams.get(ng, 0) + 1
+
+            # Max reference counts for n-grams
+            max_ref_counts = {}
+            for rt in refs_tokens:
+                rt_len = len(rt)
+                ref_counts = {}
+                for i in range(0, max(0, rt_len - n + 1)):
+                    ng = tuple(rt[i:i + n])
+                    ref_counts[ng] = ref_counts.get(ng, 0) + 1
+                for ng, cnt in ref_counts.items():
+                    if cnt > max_ref_counts.get(ng, 0):
+                        max_ref_counts[ng] = cnt
+
+            overlap = 0
+            total = 0
+            for ng, cnt in cand_ngrams.items():
+                overlap += min(cnt, max_ref_counts.get(ng, 0))
+                total += cnt
+
+            if total == 0:
+                precision = 0.0
+            else:
+                if smooth:
+                    precision = (overlap + 1) / (total + 1)
+                else:
+                    precision = overlap / total
+            precisions.append(precision)
+
+        # geometric mean of precisions
+        from math import log, exp
+        if any(p == 0 for p in precisions):
+            geo_mean = 0.0
+        else:
+            geo_mean = exp(sum(log(p) for p in precisions) / max_order)
+        return bp * geo_mean
 
     def _BLEU(self, answer: str, ground_truth:List[str]) -> float:
-        return self.BLEU_scorer.compute(predictions=[answer], references=[ground_truth])["bleu"]
+        return self._sentence_bleu(answer, ground_truth)
 
     def _Exact_Match(self, answer: str, ground_truth: List[str]) -> int:
         total = 0
@@ -88,13 +151,47 @@ class Evaluator:
         return total
     
     def _F1_score(self, answer: List[str], ground_truth: List[List[str]]) -> float:
-        return self.F1_scorer.compute(predictions=[answer], references=[ground_truth])["f1"]
+        # Multi-label F1: compute F1 between predicted labels and each reference label set; take the best.
+        pred_set = set(answer)
+        def f1_for_ref(ref_labels: List[str]) -> float:
+            ref_set = set(ref_labels)
+            tp = len(pred_set & ref_set)
+            fp = len(pred_set - ref_set)
+            fn = len(ref_set - pred_set)
+            if tp == 0:
+                return 0.0
+            precision = tp / (tp + fp) if (tp + fp) > 0 else 0.0
+            recall = tp / (tp + fn) if (tp + fn) > 0 else 0.0
+            if precision + recall == 0:
+                return 0.0
+            return 2 * precision * recall / (precision + recall)
+        return max((f1_for_ref(gt) for gt in ground_truth), default=0.0)
 
     def _Precision(self, answer: str, ground_truth: List[str]) -> float:
-        return self.Precision_scorer.compute(predictions=[answer], references=[ground_truth])["precision"]
+        # Token-level precision between answer and union of references
+        tokens_pred = set(white_space_fix(remove_articles(handle_punc(lower(replace_underscore(answer))))).split())
+        tokens_ref = set()
+        for gt in ground_truth:
+            tokens_ref |= set(white_space_fix(remove_articles(handle_punc(lower(replace_underscore(gt))))).split())
+        if not tokens_pred:
+            return 0.0
+        tp = len(tokens_pred & tokens_ref)
+        fp = len(tokens_pred - tokens_ref)
+        denom = tp + fp
+        return tp / denom if denom > 0 else 0.0
 
     def _Recall(self, answer: str, ground_truth: List[str]) -> float:
-        return self.Recall_scorer.compute(predictions=[answer], references=[ground_truth])["recall"]
+        # Token-level recall between answer and union of references
+        tokens_pred = set(white_space_fix(remove_articles(handle_punc(lower(replace_underscore(answer))))).split())
+        tokens_ref = set()
+        for gt in ground_truth:
+            tokens_ref |= set(white_space_fix(remove_articles(handle_punc(lower(replace_underscore(gt))))).split())
+        if not tokens_ref:
+            return 0.0
+        tp = len(tokens_pred & tokens_ref)
+        fn = len(tokens_ref - tokens_pred)
+        denom = tp + fn
+        return tp / denom if denom > 0 else 0.0
     
     def _LLM_Judge(self, answer: str, ground_truth: List[str]) -> int:
         LLM_Judge_prompt = '*************Consider a knowledge Q&A RAG task to test the capability of a testing model, the correct answer list is:*************\n' + "\n".join(ground_truth)
@@ -102,8 +199,33 @@ class Evaluator:
         LLM_Judge_prompt += '\n\n\n\n*************Please check if the model\'s answer is correct. As long as the model\'s answer hits any item (or synonym) in the correct answer list, it can be considered correct. You only need to answer "yes" or "no".*************'
         return 1 if self.gpt.generate(LLM_Judge_prompt).lower() == "yes" else 0
 
-    def _RR(self, full_answer: str, ground_truth: List[str], ground_truth_evidences: List[str]) -> dict:
-        return reward_function(full_answer, ground_truth, ground_truth_evidences)
+    def _RR(self, full_answer: str, ground_truth_answers: List[str], ground_truth_evidences: List[str]) -> dict:
+        # reward_function(data, gt_evidences, gt_answers)
+        return reward_function(full_answer, ground_truth_evidences, ground_truth_answers)
+
+    def _clean(self, candidate_gts: Union[List[str], List[List[str]]], answers: List[str]) -> List[str]:
+        assert len(candidate_gts) == len(answers), "make sure the number of candidate answers and answers are the same"
+        if isinstance(candidate_gts[0], str):
+            candidate_gts = [[candidate_answer] for candidate_answer in candidate_gts]
+        filtered_empty_entries = []
+        non_empty_answer = []
+        non_empty_gts = []
+        for i in range(len(candidate_gts)):
+            answer = answers[i].strip()
+            candidate_answer_list =[candidate_answer.strip() for candidate_answer in candidate_gts[i] if candidate_answer.strip()]
+            candidate_gts[i] = candidate_answer_list
+            if len(candidate_answer_list) == 0 and len(answer) == 0:
+                filtered_empty_entries.append(1)
+            elif len(candidate_answer_list) == 0:
+                filtered_empty_entries.append(0)
+            elif len(answer) == 0:
+                filtered_empty_entries.append(0)
+            else:
+                non_empty_answer.append(answer)
+                non_empty_gts.append(candidate_answer_list)
+        return non_empty_answer, non_empty_gts, filtered_empty_entries
+
+
 
     def evaluate(self,full_answer: List[str], chosen_evidences:List[str], answers: List[str], ground_truths: List[List[str]], ground_truth_evidences: List[List[str]]) -> dict:
         if len(answers) != len(ground_truths):
@@ -115,50 +237,96 @@ class Evaluator:
         reward_results = {}
         # --- Batch-Optimized Metrics ---
         if "RL" in self.metrics:
-            rouge_results = self.Rouge_L_scorer.compute(
-                predictions=answers,
-                references=ground_truths,
-                use_aggregator=False
-            )
-            rouge_evidence_results = self.Rouge_L_scorer.compute(
-                predictions=chosen_evidences,
-                references=ground_truth_evidences,
-                use_aggregator=False
-            )
-            for i, score in enumerate(rouge_results["rougeL"]):
-                answer_results["Rouge-L-F1"] = answer_results.get("Rouge-L-F1", []) + [score]
-            for i, score in enumerate(rouge_evidence_results["rougeL"]):
-                evidence_results["Rouge-L-F1"] = evidence_results.get("Rouge-L-F1", []) + [score]
+            # Compute per-sample best Rouge-L-F1 across multiple references
+            for i in range(num_samples):
+                cand_ans = answers[i]
+                refs_ans = ground_truths[i]
+                best_rl_ans = 0.0
+                for ref in refs_ans:
+                    rl = Evaluator._ROUGE_SCORER.score(ref, cand_ans)["rougeL"].fmeasure
+                    if rl > best_rl_ans:
+                        best_rl_ans = rl
+                answer_results["Rouge-L-F1"] = answer_results.get("Rouge-L-F1", []) + [best_rl_ans]
+
+                cand_evd = chosen_evidences[i]
+                refs_evd = ground_truth_evidences[i]
+                best_rl_evd = 0.0
+                for ref in refs_evd:
+                    rl = Evaluator._ROUGE_SCORER.score(ref, cand_evd)["rougeL"].fmeasure
+                    if rl > best_rl_evd:
+                        best_rl_evd = rl
+                evidence_results["Rouge-L-F1"] = evidence_results.get("Rouge-L-F1", []) + [best_rl_evd]
 
         if "BS" in self.metrics:
             logger.info("Computing BERTScore for the batch...")
             # BERTScore is inherently batch-friendly
-            P, R, F1 = bert_score_compute(
-                cands=answers,
-                refs=ground_truths,
-                model_type=self.BERT_path,
-                lang="en",
-                device=self.device,
-                batch_size=64,
-                verbose=True
-            )
-            P_evidence, R_evidence, F1_evidence = bert_score_compute(
-                cands=chosen_evidences,
-                refs=ground_truth_evidences,
-                model_type=self.BERT_path,
-                lang="en",
-                device=self.device,
-                batch_size=64,
-                verbose=True
-            )
-            for i in range(num_samples):
+            non_empty_answer, non_empty_gts, filtered_empty_entries = self._clean(ground_truths, answers)
+            non_empty_evd, non_empty_evd_refs, filtered_empty_entries_evd = self._clean(ground_truth_evidences, chosen_evidences)
+            logger.info(f"the number of non-empty answer is: {len(non_empty_answer)}")
+            logger.info(f"the number of non-empty gts is: {len(non_empty_gts)}")
+            logger.info(f"the number of non-empty evd is: {len(non_empty_evd)}")
+            logger.info(f"the number of non-empty evd_refs is: {len(non_empty_evd_refs)}")
+            logger.info(f"the number of filtered_empty_entries is: {len(filtered_empty_entries)}")
+            logger.info(f"the number of filtered_empty_entries_evd is: {len(filtered_empty_entries_evd)}")
+            try:
+                P, R, F1 = bert_score_compute(
+                    cands=non_empty_answer,
+                    refs=non_empty_gts,
+                    model_type=self.BERT_path,
+                    lang="en",
+                    device=self.device,
+                    batch_size=64,
+                    verbose=True,
+                    use_fast_tokenizer=False
+                )
+            except TypeError:
+                P, R, F1 = bert_score_compute(
+                    cands=non_empty_answer,
+                    refs=non_empty_gts,
+                    model_type=self.BERT_path,
+                    lang="en",
+                    device=self.device,
+                    batch_size=64,
+                    verbose=True,
+                )
+
+            if len(non_empty_evd) > 0:
+                try:
+                    P_evidence, R_evidence, F1_evidence = bert_score_compute(
+                        cands=non_empty_evd,
+                        refs=non_empty_evd_refs,
+                        model_type=self.BERT_path,
+                        lang="en",
+                        device=self.device,
+                        batch_size=64,
+                        verbose=True,
+                        use_fast_tokenizer=False
+                    )
+                except TypeError:
+                    P_evidence, R_evidence, F1_evidence = bert_score_compute(
+                        cands=non_empty_evd,
+                        refs=non_empty_evd_refs,
+                        model_type=self.BERT_path,
+                        lang="en",
+                        device=self.device,
+                        batch_size=64,
+                        verbose=True
+                    )
+            else:
+                P_evidence, R_evidence, F1_evidence = [], [], []
+            for i in range(len(non_empty_answer)):
                 answer_results["BERTScore-P"] = answer_results.get("BERTScore-P",[]) + [P[i].item()]
                 answer_results["BERTScore-R"] = answer_results.get("BERTScore-R",[]) + [R[i].item()]
                 answer_results["BERTScore-F1"] = answer_results.get("BERTScore-F1",[]) + [F1[i].item()]
-            for i in range(num_samples):
+            
+            for i in range(len(non_empty_evd)):
                 evidence_results["BERTScore-P"] = evidence_results.get("BERTScore-P",[]) + [P_evidence[i].item()]
                 evidence_results["BERTScore-R"] = evidence_results.get("BERTScore-R",[]) + [R_evidence[i].item()]
                 evidence_results["BERTScore-F1"] = evidence_results.get("BERTScore-F1",[]) + [F1_evidence[i].item()]
+
+            evidence_results["BERTScore-P"] = evidence_results.get("BERTScore-P",[]) + filtered_empty_entries_evd
+            evidence_results["BERTScore-R"] = evidence_results.get("BERTScore-R",[]) + filtered_empty_entries_evd
+            evidence_results["BERTScore-F1"] = evidence_results.get("BERTScore-F1",[]) + filtered_empty_entries_evd
 
         # --- Per-Sample Metrics ---
         logger.info("Computing per-sample metrics (BLEU, EM, LLM-Judge)...")
