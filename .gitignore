@@ -1,5 +1,7 @@
 data/*/
 test/*
 __pycache__/
-outputs/
+outputs/*/*/*/*/*.parquet
+outputs/*/*/*/*/*.json
 ckpts/
+log/
