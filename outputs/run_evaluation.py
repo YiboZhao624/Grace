@@ -10,7 +10,9 @@ from tqdm import tqdm
 
 logger = setup_logging("Evaluator")
 
-path = "/root/projects/RLRAG/outputs/QASPER_Split-test_Prompt-default_NumberTemplate-False_retriever_bm25_TopK-7_WO_GT_Evidence_Rate-0.2_Qwen3-4B-Instruct-2507_inference.parquet"
+os.environ['TRANSFORMERS_CACHE'] = "/root/.cache/huggingface/hub/"
+
+path = "outputs/QASPER/Qwen3-4B-Instruct-2507/test/256cs/QASPER_Split-test_Prompt-default_NumberTemplate-False_retriever_vllm-Qwen3-Embedding-0.6B_TopK-7_WO_GT_Evidence_Rate-0.2_Qwen3-4B-Instruct-2507_inference.parquet"
 
 res_saving_path = "/".join(path.split("/")[:-1])
 generate_method = path.split("/")[-1].split("_WO_GT_Evidence")[0].split("_")[-3:-1]
@@ -81,9 +83,17 @@ for key, value in evidence_results.items():
 for key, value in reward_results.items():
     reward_results[key] = sum(value) / len(value)
 
-with open(os.path.join(res_saving_path, f"{generate_method}_{W_GT_Evidence}_answer_results.json"), "w") as f:
-    json.dump(answer_results, f, indent=4)
-with open(os.path.join(res_saving_path, f"{generate_method}_{W_GT_Evidence}_evidence_results.json"), "w") as f:
-    json.dump(evidence_results, f, indent=4)
-with open(os.path.join(res_saving_path, f"{generate_method}_{W_GT_Evidence}_reward_results.json"), "w") as f:
-    json.dump(reward_results, f, indent=4)
+all_results = {
+    "answer_results": answer_results,
+    "evidence_results": evidence_results,
+    "reward_results": reward_results,
+}
+with open(os.path.join(res_saving_path, f"{generate_method}_{W_GT_Evidence}_all_results.json"), "w") as f:
+    json.dump(all_results, f, indent=4)
+
+# with open(os.path.join(res_saving_path, f"{generate_method}_{W_GT_Evidence}_answer_results.json"), "w") as f:
+#     json.dump(answer_results, f, indent=4)
+# with open(os.path.join(res_saving_path, f"{generate_method}_{W_GT_Evidence}_evidence_results.json"), "w") as f:
+#     json.dump(evidence_results, f, indent=4)
+# with open(os.path.join(res_saving_path, f"{generate_method}_{W_GT_Evidence}_reward_results.json"), "w") as f:
+#     json.dump(reward_results, f, indent=4)
