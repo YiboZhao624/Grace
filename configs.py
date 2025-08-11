@@ -1,5 +1,6 @@
 from dataclasses import dataclass, field
-from typing import List, Literal
+from typing import List, Literal, Union, TypeAlias
+from itertools import product
 
 @dataclass
 class PreprocessConfig:
@@ -31,19 +32,35 @@ class ChunkerConfig:
     max_length: int = 512
     overlap: int = 64
 
+
+Mode: TypeAlias = Literal["retriever", "retriever_reranker", "oracle", "random"]
+ModeOrModes = Union[Mode, List[Mode]]
+Split: TypeAlias = Literal["train", "val", "test"]
+SplitOrSplits = Union[Split, List[Split]]
+
 @dataclass
 class DataGeneratorConfig:
     # the configs for generating dataset, including train/dev/test split.
     dataset: List[str] = field(default_factory=lambda: ["qasper"])
-    data_folder: str = "./data/qasper"
-    split: Literal["train", "val", "test"] = "train"
-    method: Literal["retriever", "retriever_reranker", "oracle","random"] = "retriever"
+    data_folder: List[str] = field(default_factory=lambda: ["./data/qasper"])
+    split: SplitOrSplits = field(default_factory=lambda: ["train", "val", "test"])
+    method: ModeOrModes = field(default_factory=lambda: ["retriever", "random", "oracle"])
     top_k: int = 5
     wo_gt_evidence_rate: float = 0.2
     prompt_template: str = "default"
     number_template: bool = False
     recall_threshold: float = 0.5
     precision_threshold: float = 0.5
+
+    def iter_combinations(self):
+        """
+        To generate the combinations of the dataset, split and method.
+        Allow the user generate a set of dataset with a single execution.
+        """
+        for dataset, folder in zip(self.dataset, self.data_folder):
+            for split, method in product(self.split, self.method):
+                yield dataset, folder, split, method
+
 
 @dataclass
 class RerankerConfig:
