@@ -471,21 +471,37 @@ class QASPERRetrieverRerankerDataGenerator(QASPERDataGenerator):
         return evidence_chunks, entry
 
 
-def get_data_generator(data_generator_config: DataGeneratorConfig, retriever_config: RetrieverConfig, chunker_config: ChunkerConfig, reranker_config: RerankerConfig = None):
+def get_data_generator(data_generator_config: DataGeneratorConfig):
     '''
     get the data generator according to the configs.
     '''
-    chunker = get_chunker(chunker_config)
+    lengths = [
+        len(data_generator_config.chunker_config),
+        len(data_generator_config.retriever_config),
+        len(data_generator_config.reranker_config),
+    ]
+    target_length = len(data_generator_config.method)
+
+    assert all(l == 1 or l == target_length for l in lengths), "All configs should have length 1 or match the length of method."
+
+    if lengths[0] == 1:
+        data_generator_config.chunker_config = [data_generator_config.chunker_config[0]] * target_length
+    if lengths[1] == 1:
+        data_generator_config.retriever_config = [data_generator_config.retriever_config[0]] * target_length
+    if lengths[2] == 1:
+        data_generator_config.reranker_config = [data_generator_config.reranker_config[0]] * target_length
+
     methods = data_generator_config.method
-    single_config = deepcopy(data_generator_config)
-    for method in methods:
+    for method_idx, method in enumerate(methods):
+        single_config = deepcopy(data_generator_config)
+        chunker = get_chunker(data_generator_config.chunker_config[method_idx])
         if method == "retriever":
-            retriever = get_retriever(retriever_config)
+            retriever = get_retriever(data_generator_config.retriever_config[method_idx])
             single_config.method = method
             data_generator = QASPERRetrieverDataGenerator(chunker, retriever, single_config)
         elif method == "retriever_reranker":
-            retriever = get_retriever(retriever_config)
-            reranker = get_reranker(reranker_config)
+            retriever = get_retriever(data_generator_config.retriever_config[method_idx])
+            reranker = get_reranker(data_generator_config.reranker_config[method_idx])
             single_config.method = method
             data_generator = QASPERRetrieverRerankerDataGenerator(chunker, retriever, reranker, single_config)
         elif method == "oracle":
@@ -494,13 +510,6 @@ def get_data_generator(data_generator_config: DataGeneratorConfig, retriever_con
         elif method == "random":
             raise NotImplementedError("Random data generator is not implemented yet.")
         else:
-            raise ValueError(f"Unsupported data generator method: {data_generator_config.method}")
+            raise ValueError(f"Unsupported data generator method: {method}")
         yield data_generator
 
-if __name__ == "__main__":
-    data_generator_config = DataGeneratorConfig()
-    data_generator_config.method = ["retriever", "retriever_reranker", "oracle"]
-    data_generator_config.split = ["train", "val", "test"]
-    data_generator_config.top_k = 5
-    data_generator_config.wo_gt_evidence_rate = 0.2
-    data_generator_config.prompt_template = "default"
