@@ -1,18 +1,18 @@
 import json
 import os
-from typing import List, Dict
+from typing import List, Dict, Union
 import pandas as pd
 import logging
 import re
 
-def extract_evidence_or_all(text:str):
+def extract_evidence_or_none(text:str):
     # if the text contains <evidence>...</evidence> tag, return the evidence.
     # else, return the text.
     match = re.search(r"<evidence>(.*?)</evidence>", text, re.DOTALL)
     if match:
         return match.group(1)
     else:
-        return text
+        return ""
 
 def extract_answer_or_all(text:str):
     # if the text contains <answer>...</answer> tag, return the answer.
@@ -40,15 +40,22 @@ def setup_logging(level=logging.INFO, log_file=None):
 # Create a default logger
 logger = setup_logging()
 
-def load_raw_qasper_data(data_folder: str, split = "train"):
-    path = os.path.join(data_folder, split)
-    paper_path = os.path.join(path, "paper_data.json")
-    QA_path = os.path.join(path, "QA_data.json")
-    with open(paper_path, "r") as f:
-        paper_data = json.load(f)
-    with open(QA_path, "r") as f:
-        QA_data = json.load(f)
-    return paper_data, QA_data
+def load_raw_qasper_data(data_folder: str, split: Union[List[str], str] = "train"):
+    all_paper_data = {}
+    all_QA_data = {}
+    if isinstance(split, str):
+        split = [split]
+    for s in split:
+        path = os.path.join(data_folder, s)
+        paper_path = os.path.join(path, "paper_data.json")
+        QA_path = os.path.join(path, "QA_data.json")
+        with open(paper_path, "r") as f:
+            paper_data = json.load(f)
+        with open(QA_path, "r") as f:
+            QA_data = json.load(f)
+        all_paper_data[s] = paper_data
+        all_QA_data[s] = QA_data
+    return all_paper_data, all_QA_data
 
 def save_parquet(data: List[Dict], path: str):
     df = pd.DataFrame(data)
