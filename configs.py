@@ -41,8 +41,8 @@ SplitOrSplits = Union[Split, List[Split]]
 @dataclass
 class DataGeneratorConfig:
     # the configs for generating dataset, including train/dev/test split.
-    dataset: List[str] = field(default_factory=lambda: ["qasper"])
-    data_folder: List[str] = field(default_factory=lambda: ["./data/qasper"])
+    dataset: str = "qasper"
+    data_folder: str = "./data/qasper"
     split: SplitOrSplits = field(default_factory=lambda: ["train", "val", "test"])
     method: ModeOrModes = field(default_factory=lambda: ["retriever", "random", "oracle"])
     top_k: int = 5
@@ -56,10 +56,14 @@ class DataGeneratorConfig:
         """
         To generate the combinations of the dataset, split and method.
         Allow the user generate a set of dataset with a single execution.
+        return the dataset name, dataset folder, split and method in order.
         """
-        for dataset, folder in zip(self.dataset, self.data_folder):
-            for split, method in product(self.split, self.method):
-                yield dataset, folder, split, method
+        if isinstance(self.split, str):
+            self.split = [self.split]
+        if isinstance(self.method, str):
+            self.method = [self.method]
+        for split, method in product(self.split, self.method):
+            yield split, method
 
 
 @dataclass
