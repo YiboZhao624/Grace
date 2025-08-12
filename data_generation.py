@@ -60,6 +60,7 @@ from tqdm import tqdm
 from utils import load_raw_qasper_data, merge_by_reverse_removal
 from prompts import Prompt_templates
 from configs import DataGeneratorConfig, PreprocessConfig, RetrieverConfig, ChunkerConfig, RerankerConfig
+from copy import deepcopy
 
 random.seed(42)
 
@@ -118,29 +119,36 @@ class QASPERDataGenerator:
     # 3. QASPERRetrieverRerankerGenerator: using the retriever and reranker.
     # 4. QASPERRandomRerankerGenerator: using the retriever and reranker and random strategy.
     # 5. QASPEROracleDataGenerator: using the ground truth evidence.
-    def __init__(self, chunker: Chunker, retriever: Union[Retriever, None], config: DataGeneratorConfig):
-        self.config = config
+    def __init__(self, chunker: Chunker, retriever: Union[Retriever, None], configs: DataGeneratorConfig):
+        # This saves all the configs for this data generator to generate_all.
+        self.configs = configs
+        # For generating one piece of data. We initialize the DataGeneratorConfig.
+        self.config = DataGeneratorConfig()
         self.chunker = chunker
         self.retriever = retriever
-        self.data_folder = config.data_folder
-        self.paper_data = None
-        self.QA_data:list[Dict] = []
+        self.data_folder = configs.data_folder
+        # the paper_data and the QA_data will be a dict.
+        # with the keys limited in train, val, and test.
+        # with the values being the dict of correspponding data.
+        self.paper_data: Dict[str, Dict[str, Dict]] = {}
+        self.QA_data:Dict[str, List[Dict]] = {}
         self.load_data()
 
     def load_data(self) -> Tuple[Dict, Dict]:
         paper_data, QA_data = load_raw_qasper_data(self.data_folder, self.config.split)
         self.paper_data = paper_data
         self.extract_full_text()
-        for paper_id, paper_data in self.paper_data.items():
-            chunks = self.chunk_paper(paper_id)
-            self.paper_data[paper_id]["chunks"] = chunks
+        for split, paper_data in self.paper_data.items():
+            for paper_id, one_paper_data in paper_data.items():
+                chunks = self.chunk_paper(split, paper_id)
+                self.paper_data[split][paper_id]["chunks"] = chunks
         self.QA_data = QA_data
 
-    def chunk_paper(self, paper_id: str) -> List[str]:
+    def chunk_paper(self, split:str, paper_id: str) -> List[str]:
         """
         chunk the paper data.
         """
-        full_text = self.paper_data[paper_id]["full_text"]
+        full_text = self.paper_data[split][paper_id]["full_text"]
         chunks = self.chunker.chunk(full_text)
         return chunks
 
@@ -152,21 +160,22 @@ class QASPERDataGenerator:
         Returns:
             context after concatenating the title, abstract and full text.
         """
-        for paper_id, paper_data in self.paper_data.items():    
-            text_parts = []        
-            if paper_data.get("title"):
-                text_parts.append(paper_data["title"])
-            if paper_data.get("abstract"):
-                text_parts.append(paper_data["abstract"])
+        for split, paper_data in self.paper_data.items():
+            for paper_id, one_paper_data in paper_data.items():    
+                text_parts = []        
+                if one_paper_data.get("title"):
+                    text_parts.append(one_paper_data["title"])
+                if one_paper_data.get("abstract"):
+                    text_parts.append(one_paper_data["abstract"])
             
-            if "full_text" in paper_data:
-                for section in paper_data["full_text"]:
-                    if "paragraphs" in section:
-                        for paragraph in section["paragraphs"]:
-                            if paragraph.strip():
-                                text_parts.append(paragraph.strip())
-            full_text = "\n\n".join(text_parts)
-            self.paper_data[paper_id]["full_text"] = full_text
+                if "full_text" in one_paper_data:
+                    for section in one_paper_data["full_text"]:
+                        if "paragraphs" in section:
+                            for paragraph in section["paragraphs"]:
+                                if paragraph.strip():
+                                    text_parts.append(paragraph.strip())
+                full_text = "\n\n".join(text_parts)
+                self.paper_data[split][paper_id]["full_text"] = full_text
     
     def _convert_evidence_to_chunk_ids(self, gt_evidence: List[str], paper_id: str) -> List[int]:
         """
@@ -264,7 +273,7 @@ class QASPERDataGenerator:
             evidence_input = "\n\n".join(f"{i+1}.{s}" for i, s in enumerate(chunk_text_list))
         return evidence_input
 
-    def generate(self) -> List[Dict]:
+    def generate_single(self) -> List[Dict]:
         # 0. about the data: paper is well chunked, retriever is initialized.
         # 1. manage the configs, important configs include:
         # 1.1 top-k: the number of total evidence to be input, default is 5.
@@ -279,21 +288,21 @@ class QASPERDataGenerator:
         top_k = self.config.top_k
         wo_gt_evidence_rate = self.config.wo_gt_evidence_rate
         if self.config.split == "train":
-            wo_gt_evidence_entries = random.sample(self.QA_data, int(len(self.QA_data) * wo_gt_evidence_rate))
-            for qa in self.QA_data:
+            wo_gt_evidence_entries = random.sample(self.QA_data[self.config.split], int(len(self.QA_data[self.config.split]) * wo_gt_evidence_rate))
+            for qa in self.QA_data[self.config.split]:
                 if qa in wo_gt_evidence_entries:
                     qa["gt_evidence"] = False
                 else:
                     qa["gt_evidence"] = True
-            logger.info(f"the number of the entries without ground truth evidence is {wo_gt_evidence_rate}*{len(self.QA_data)} = {len(wo_gt_evidence_entries)}")
+            logger.info(f"the number of the entries without ground truth evidence is {wo_gt_evidence_rate}*{len(self.QA_data[self.config.split])} = {len(wo_gt_evidence_entries)}")
 
         examples = []
         prev_paper_id = None
-        for qa_data in tqdm(self.QA_data, desc="Generating data"):
+        for qa_data in tqdm(self.QA_data[self.config.split], desc="Generating data"):
             # initialize the retriever, if needed.
             if self.retriever is not None and prev_paper_id != qa_data["paper_id"]:
                 self.retriever.reset()
-                self.retriever.index(self.paper_data[qa_data["paper_id"]]["chunks"])
+                self.retriever.index(self.paper_data[self.config.split][qa_data["paper_id"]]["chunks"])
                 prev_paper_id = qa_data["paper_id"]
 
             
@@ -321,13 +330,31 @@ class QASPERDataGenerator:
             examples.append(entry)
         return examples
 
+    def generate_all(self) -> List[Dict]:
+        """遍历 config 的所有组合并生成数据"""
+        all_examples = {}
+        for split, method in self.configs.iter_combinations():
+            config = DataGeneratorConfig(
+                dataset=self.configs.dataset,
+                data_folder=self.configs.data_folder,
+                split=split,
+                method=method,
+                top_k=self.configs.top_k,  
+                wo_gt_evidence_rate=self.configs.wo_gt_evidence_rate,
+                prompt_template=self.configs.prompt_template
+            )
+            self.config = config
+
+            logger.info(f"Generating for split={split}, method={method}")
+            examples = self.generate_single()
+
+            all_examples[f"{split}_{method}"] = examples
+        return all_examples
+
 
 class QASPERRetrieverDataGenerator(QASPERDataGenerator):
     def __init__(self, chunker: Chunker, retriever: Retriever, config: DataGeneratorConfig):
         super().__init__(chunker, retriever, config)
-        self.retriever = retriever
-        self.chunker = chunker
-        self.config = config
         # Note: self.QA_data and self.paper_data are already initialized by parent class
 
     def organize_evidence(self, qa_data: Dict, gt_evidence_ids: List[int], gt_evidence_text: List[str], entry: dict) -> Tuple[List[str], dict]:
@@ -379,9 +406,6 @@ class QASPEROracleDataGenerator(QASPERDataGenerator):
     '''
     def __init__(self, chunker: Chunker, retriever: Retriever, config: DataGeneratorConfig):
         super().__init__(chunker, retriever, config)
-        self.retriever = retriever
-        self.chunker = chunker
-        self.config = config
         # Note: self.QA_data and self.paper_data are already initialized by parent class
 
     def organize_evidence(self, qa_data: Dict, gt_evidence_ids: List[int], gt_evidence_text: List[str], entry: dict) -> Tuple[List[str], dict]:
@@ -400,10 +424,7 @@ class QASPERRetrieverRerankerDataGenerator(QASPERDataGenerator):
     '''
     def __init__(self, chunker: Chunker, retriever: Retriever, reranker: Reranker, config: DataGeneratorConfig):
         super().__init__(chunker, retriever, config)
-        self.retriever = retriever
         self.reranker = reranker
-        self.chunker = chunker
-        self.config = config
         # Note: self.QA_data and self.paper_data are already initialized by parent class
 
     def organize_evidence(self, qa_data: Dict, gt_evidence_ids: List[int], gt_evidence_text: List[str], entry: dict) -> Tuple[List[str], dict]:
@@ -455,17 +476,31 @@ def get_data_generator(data_generator_config: DataGeneratorConfig, retriever_con
     get the data generator according to the configs.
     '''
     chunker = get_chunker(chunker_config)
-    if data_generator_config.method == "retriever":
-        retriever = get_retriever(retriever_config)
-        data_generator = QASPERRetrieverDataGenerator(chunker, retriever, data_generator_config)
-    elif data_generator_config.method == "retriever_reranker":
-        retriever = get_retriever(retriever_config)
-        reranker = get_reranker(reranker_config)
-        data_generator = QASPERRetrieverRerankerDataGenerator(chunker, retriever, reranker, data_generator_config)
-    elif data_generator_config.method == "oracle":
-        data_generator = QASPEROracleDataGenerator(chunker, None, data_generator_config)
-    elif data_generator_config.method == "random":
-        raise NotImplementedError("Random data generator is not implemented yet.")
-    else:
-        raise ValueError(f"Unsupported data generator method: {data_generator_config.method}")
-    return data_generator
+    methods = data_generator_config.method
+    single_config = deepcopy(data_generator_config)
+    for method in methods:
+        if method == "retriever":
+            retriever = get_retriever(retriever_config)
+            single_config.method = method
+            data_generator = QASPERRetrieverDataGenerator(chunker, retriever, single_config)
+        elif method == "retriever_reranker":
+            retriever = get_retriever(retriever_config)
+            reranker = get_reranker(reranker_config)
+            single_config.method = method
+            data_generator = QASPERRetrieverRerankerDataGenerator(chunker, retriever, reranker, single_config)
+        elif method == "oracle":
+            single_config.method = method
+            data_generator = QASPEROracleDataGenerator(chunker, None, single_config)
+        elif method == "random":
+            raise NotImplementedError("Random data generator is not implemented yet.")
+        else:
+            raise ValueError(f"Unsupported data generator method: {data_generator_config.method}")
+        yield data_generator
+
+if __name__ == "__main__":
+    data_generator_config = DataGeneratorConfig()
+    data_generator_config.method = ["retriever", "retriever_reranker", "oracle"]
+    data_generator_config.split = ["train", "val", "test"]
+    data_generator_config.top_k = 5
+    data_generator_config.wo_gt_evidence_rate = 0.2
+    data_generator_config.prompt_template = "default"
