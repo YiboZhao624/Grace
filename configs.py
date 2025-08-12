@@ -33,6 +33,18 @@ class ChunkerConfig:
     overlap: int = 64
 
 
+
+
+
+@dataclass
+class RerankerConfig:
+    # the configs for initializing the reranker. We only support vLLM for now.
+    # To support transformers-based reranker, please modify the reranker.py file.
+    reranker_type: str = "vllm"
+    model_name: str = "/root/shared_planing/LLM_model/BAAI-bge-reranker-v2-m3/"
+    device: str = "cuda:7"
+    base_url: str = "http://localhost:8000"
+
 Mode: TypeAlias = Literal["retriever", "retriever_reranker", "oracle", "random"]
 ModeOrModes = Union[Mode, List[Mode]]
 Split: TypeAlias = Literal["train", "val", "test"]
@@ -45,6 +57,9 @@ class DataGeneratorConfig:
     data_folder: str = "./data/qasper"
     split: SplitOrSplits = field(default_factory=lambda: ["train", "val", "test"])
     method: ModeOrModes = field(default_factory=lambda: ["retriever", "random", "oracle"])
+    retriever_config: List[RetrieverConfig] = field(default_factory=lambda: [RetrieverConfig()])
+    reranker_config: List[RerankerConfig] = field(default_factory=lambda: [RerankerConfig()])
+    chunker_config: List[ChunkerConfig] = field(default_factory=lambda: [ChunkerConfig()])
     top_k: int = 5
     wo_gt_evidence_rate: float = 0.2
     prompt_template: str = "default"
@@ -65,15 +80,6 @@ class DataGeneratorConfig:
         for split, method in product(self.split, self.method):
             yield split, method
 
-
-@dataclass
-class RerankerConfig:
-    # the configs for initializing the reranker. We only support vLLM for now.
-    # To support transformers-based reranker, please modify the reranker.py file.
-    reranker_type: str = "vllm"
-    model_name: str = "/root/shared_planing/LLM_model/BAAI-bge-reranker-v2-m3/"
-    device: str = "cuda:7"
-    base_url: str = "http://localhost:8000"
 
 @dataclass
 class LLMConfig:
