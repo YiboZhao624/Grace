@@ -32,10 +32,6 @@ class ChunkerConfig:
     max_length: int = 512
     overlap: int = 64
 
-
-
-
-
 @dataclass
 class RerankerConfig:
     # the configs for initializing the reranker. We only support vLLM for now.
@@ -51,7 +47,7 @@ Split: TypeAlias = Literal["train", "val", "test"]
 SplitOrSplits = Union[Split, List[Split]]
 
 @dataclass
-class DataGeneratorConfig:
+class DataGeneratorConfigs:
     # the configs for generating dataset, including train/dev/test split.
     dataset: str = "qasper"
     data_folder: str = "./data/qasper"
@@ -79,6 +75,22 @@ class DataGeneratorConfig:
             self.method = [self.method]
         for split, method in product(self.split, self.method):
             yield split, method
+
+@dataclass
+class DataGeneratorConfig:
+    dataset: str = "qasper"
+    data_folder: str = "./data/qasper"
+    split: Split = "train"
+    method: Mode = "retriever"
+    retriever_config: RetrieverConfig = RetrieverConfig()
+    reranker_config: RerankerConfig = RerankerConfig()
+    chunker_config: ChunkerConfig = ChunkerConfig()
+    top_k: int = 5
+    wo_gt_evidence_rate: float = 0.2
+    prompt_template: str = "default"
+    number_template: bool = False
+    recall_threshold: float = 0.5
+    precision_threshold: float = 0.5
 
 
 @dataclass
