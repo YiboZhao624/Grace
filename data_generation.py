@@ -57,7 +57,7 @@ from retriever import *
 from reranker import *
 import numpy as np
 from tqdm import tqdm
-from utils import load_raw_qasper_data, merge_by_reverse_removal
+from utils import load_raw_qasper_data, merge_by_reverse_removal, safe_len
 from prompts import Prompt_templates
 from configs import DataGeneratorConfigs, PreprocessConfig, RetrieverConfig, ChunkerConfig, RerankerConfig, DataGeneratorConfig
 from copy import deepcopy
@@ -135,7 +135,7 @@ class QASPERDataGenerator:
         self.load_data()
 
     def load_data(self) -> Tuple[Dict, Dict]:
-        paper_data, QA_data = load_raw_qasper_data(self.data_folder, self.config.split)
+        paper_data, QA_data = load_raw_qasper_data(self.data_folder, self.configs.split)
         self.paper_data = paper_data
         self.extract_full_text()
         for split, paper_data in self.paper_data.items():
@@ -177,7 +177,7 @@ class QASPERDataGenerator:
                 full_text = "\n\n".join(text_parts)
                 self.paper_data[split][paper_id]["full_text"] = full_text
     
-    def _convert_evidence_to_chunk_ids(self, gt_evidence: List[str], paper_id: str) -> List[int]:
+    def _convert_evidence_to_chunk_ids(self, gt_evidence: List[str], paper_id: str, split: str) -> List[int]:
         """
         find the chunk indices that contain the evidence.
         
@@ -201,7 +201,7 @@ class QASPERDataGenerator:
                 continue
                 
             # simple substring matching
-            for i, chunk in enumerate(self.paper_data[paper_id]["chunks"]):
+            for i, chunk in enumerate(self.paper_data[split][paper_id]["chunks"]):
                 if evidence.strip() in chunk or chunk in evidence.strip():
                     evidence_chunk_ids.add(i)
                     continue
@@ -234,7 +234,7 @@ class QASPERDataGenerator:
         entry["extra_info"]["references"] = qa_data.get("references", [])
         return entry
     
-    def _get_gt_evidence(self, qa_data: Dict) -> Tuple[List[int], List[str]]:
+    def _get_gt_evidence(self, qa_data: Dict, split: str) -> Tuple[List[int], List[str]]:
         '''
         process the ground truth evidence, because there are several annotators for each QA pair, we take the union of the evidence chunk ids.
         Although we evaluate the model chose evidence on the token level, we still return the chunk ids.
@@ -244,7 +244,7 @@ class QASPERDataGenerator:
         gt_evidence_text = []
         for annotator_idx in range(len(qa_data["references"])):
             gt_evidence_text.extend(qa_data["references"][annotator_idx]["evidence"])
-            gt_evidence_ids = self._convert_evidence_to_chunk_ids(qa_data["references"][annotator_idx]["evidence"], qa_data["paper_id"])
+            gt_evidence_ids = self._convert_evidence_to_chunk_ids(qa_data["references"][annotator_idx]["evidence"], qa_data["paper_id"], split)
             gt_evidence_idx.extend(gt_evidence_ids)
         gt_evidence_idx = list(set(gt_evidence_idx))
         gt_evidence_text = list(set(gt_evidence_text))
@@ -310,7 +310,7 @@ class QASPERDataGenerator:
             entry = self._prepare_entry_metadata(qa_data)
             
             # get the ground truth evidence chunk ids.
-            gt_evidence_ids, gt_evidence_text = self._get_gt_evidence(qa_data)
+            gt_evidence_ids, gt_evidence_text = self._get_gt_evidence(qa_data, self.config.split)
             gt_answer_text = self._get_gt_answer(qa_data)
             entry["reward_model"]["ground_truth"]["answer"] = gt_answer_text
 
@@ -330,7 +330,7 @@ class QASPERDataGenerator:
             examples.append(entry)
         return examples
 
-    def generate_all(self) -> List[Dict]:
+    def generate_all(self) -> Dict[str, List[Dict]]:
         """遍历 config 的所有组合并生成数据"""
         all_examples = {}
         for split, method in self.configs.iter_combinations():
@@ -476,19 +476,19 @@ def get_data_generator(data_generator_config: DataGeneratorConfigs):
     get the data generator according to the configs.
     '''
     lengths = [
-        len(data_generator_config.chunker_config),
-        len(data_generator_config.retriever_config),
-        len(data_generator_config.reranker_config),
+        safe_len(data_generator_config.chunker_config),
+        safe_len(data_generator_config.retriever_config),
+        safe_len(data_generator_config.reranker_config),
     ]
     target_length = len(data_generator_config.method)
 
     assert all(l == 1 or l == target_length for l in lengths), "All configs should have length 1 or match the length of method."
 
-    if lengths[0] == 1:
+    if lengths[0] == 1 and lengths[0] != target_length:
         data_generator_config.chunker_config = [data_generator_config.chunker_config[0]] * target_length
-    if lengths[1] == 1:
+    if lengths[1] == 1 and lengths[1] != target_length:
         data_generator_config.retriever_config = [data_generator_config.retriever_config[0]] * target_length
-    if lengths[2] == 1:
+    if lengths[2] == 1 and lengths[2] != target_length:
         data_generator_config.reranker_config = [data_generator_config.reranker_config[0]] * target_length
 
     methods = data_generator_config.method
