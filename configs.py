@@ -82,9 +82,9 @@ class DataGeneratorConfig:
     data_folder: str = "./data/qasper"
     split: Split = "train"
     method: Mode = "retriever"
-    retriever_config: RetrieverConfig = RetrieverConfig()
-    reranker_config: RerankerConfig = RerankerConfig()
-    chunker_config: ChunkerConfig = ChunkerConfig()
+    retriever_config: RetrieverConfig = field(default_factory=lambda: RetrieverConfig())
+    reranker_config: RerankerConfig = field(default_factory=lambda: RerankerConfig())
+    chunker_config: ChunkerConfig = field(default_factory=lambda: ChunkerConfig())
     top_k: int = 5
     wo_gt_evidence_rate: float = 0.2
     prompt_template: str = "default"
