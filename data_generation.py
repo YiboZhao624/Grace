@@ -59,7 +59,7 @@ import numpy as np
 from tqdm import tqdm
 from utils import load_raw_qasper_data, merge_by_reverse_removal
 from prompts import Prompt_templates
-from configs import DataGeneratorConfig, PreprocessConfig, RetrieverConfig, ChunkerConfig, RerankerConfig
+from configs import DataGeneratorConfigs, PreprocessConfig, RetrieverConfig, ChunkerConfig, RerankerConfig, DataGeneratorConfig
 from copy import deepcopy
 
 random.seed(42)
@@ -119,7 +119,7 @@ class QASPERDataGenerator:
     # 3. QASPERRetrieverRerankerGenerator: using the retriever and reranker.
     # 4. QASPERRandomRerankerGenerator: using the retriever and reranker and random strategy.
     # 5. QASPEROracleDataGenerator: using the ground truth evidence.
-    def __init__(self, chunker: Chunker, retriever: Union[Retriever, None], configs: DataGeneratorConfig):
+    def __init__(self, chunker: Chunker, retriever: Union[Retriever, None], configs: DataGeneratorConfigs):
         # This saves all the configs for this data generator to generate_all.
         self.configs = configs
         # For generating one piece of data. We initialize the DataGeneratorConfig.
@@ -334,7 +334,7 @@ class QASPERDataGenerator:
         """遍历 config 的所有组合并生成数据"""
         all_examples = {}
         for split, method in self.configs.iter_combinations():
-            config = DataGeneratorConfig(
+            config = DataGeneratorConfigs(
                 dataset=self.configs.dataset,
                 data_folder=self.configs.data_folder,
                 split=split,
@@ -353,7 +353,7 @@ class QASPERDataGenerator:
 
 
 class QASPERRetrieverDataGenerator(QASPERDataGenerator):
-    def __init__(self, chunker: Chunker, retriever: Retriever, config: DataGeneratorConfig):
+    def __init__(self, chunker: Chunker, retriever: Retriever, config: DataGeneratorConfigs):
         super().__init__(chunker, retriever, config)
         # Note: self.QA_data and self.paper_data are already initialized by parent class
 
@@ -404,7 +404,7 @@ class QASPEROracleDataGenerator(QASPERDataGenerator):
     this class is used to generate the data with the oracle evidence.
     It is treated as the most easily type of data.
     '''
-    def __init__(self, chunker: Chunker, retriever: Retriever, config: DataGeneratorConfig):
+    def __init__(self, chunker: Chunker, retriever: Retriever, config: DataGeneratorConfigs):
         super().__init__(chunker, retriever, config)
         # Note: self.QA_data and self.paper_data are already initialized by parent class
 
@@ -422,7 +422,7 @@ class QASPERRetrieverRerankerDataGenerator(QASPERDataGenerator):
     '''
     this class is used to generate the data with the retriever and reranker.
     '''
-    def __init__(self, chunker: Chunker, retriever: Retriever, reranker: Reranker, config: DataGeneratorConfig):
+    def __init__(self, chunker: Chunker, retriever: Retriever, reranker: Reranker, config: DataGeneratorConfigs):
         super().__init__(chunker, retriever, config)
         self.reranker = reranker
         # Note: self.QA_data and self.paper_data are already initialized by parent class
@@ -471,7 +471,7 @@ class QASPERRetrieverRerankerDataGenerator(QASPERDataGenerator):
         return evidence_chunks, entry
 
 
-def get_data_generator(data_generator_config: DataGeneratorConfig):
+def get_data_generator(data_generator_config: DataGeneratorConfigs):
     '''
     get the data generator according to the configs.
     '''
