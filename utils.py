@@ -91,6 +91,12 @@ def merge_by_reverse_removal(a: list[int], b: list[int]) -> list[int]:
 def read_parquet(path: str) -> List[Dict]:
     return pd.read_parquet(path).to_dict(orient="records")
 
+def safe_len(x):
+    if x is None:
+        return 1  # None 表示单配置，等价于长度1
+    return len(x)
+
+
 if __name__ == "__main__":
     b = [4, 17, 52, 6]
     a = [3,4,17,73,5,8,10,6]
