@@ -360,11 +360,8 @@ class QASPERRetrieverDataGenerator(QASPERDataGenerator):
     def organize_evidence(self, qa_data: Dict, gt_evidence_ids: List[int], gt_evidence_text: List[str], entry: dict) -> Tuple[List[str], dict]:
         # decide whether to create a fake evidence sample.
         # no matter what, retrieve the top k+n chunks first, here, we assume that the number of ground truth evidence chunks won't be larger than 3.
-        logger.debug(f"retrieving the evidence for the question: {qa_data['question']}")
-        logger.debug(f"the length of the paper_data is {len(self.paper_data[qa_data['paper_id']]['chunks'])}")
         evidence_texts, retriever_res = self.retriever.retrieve(qa_data["question"], self.config.top_k + 3)
-        retrieved_ids = [idx for idx, _ in retriever_res][:len(self.paper_data[qa_data["paper_id"]]["chunks"])]
-        logger.debug(f"the retrieved ids are: {retrieved_ids}")
+        retrieved_ids = [idx for idx, _ in retriever_res][:len(self.paper_data[self.config.split][qa_data["paper_id"]]["chunks"])]
         if self.config.split == "train":
             if qa_data["gt_evidence"] == False:
                 entry["extra_info"]["generation_type"] = "wo_gt_evidence"
@@ -388,14 +385,14 @@ class QASPERRetrieverDataGenerator(QASPERDataGenerator):
             # then fit the content into the template.
             evidence_chunks = []
             for chunk_idx in final_evidence_ids:
-                evidence_chunks.append(self.paper_data[qa_data["paper_id"]]["chunks"][chunk_idx])
+                evidence_chunks.append(self.paper_data[self.config.split][qa_data["paper_id"]]["chunks"][chunk_idx])
         else: # the evidence is for the dev and test.
             entry["extra_info"]["generation_type"] = "retrieved"
             entry["extra_info"]["evidence_chunk_ids"] = retrieved_ids
             entry["extra_info"]["distractor_chunk_ids"] = []
             entry["reward_model"]["ground_truth"]["gt_evidence"] = gt_evidence_text
             # change the evidence chunk ids to chunk content.
-            evidence_chunks = [self.paper_data[qa_data["paper_id"]]["chunks"][chunk_idx] for chunk_idx in retrieved_ids]
+            evidence_chunks = [self.paper_data[self.config.split][qa_data["paper_id"]]["chunks"][chunk_idx] for chunk_idx in retrieved_ids]
         return evidence_chunks, entry
 
 
@@ -431,7 +428,7 @@ class QASPERRetrieverRerankerDataGenerator(QASPERDataGenerator):
         # retrieve and rerank the evidence.
         evidence_texts, retriever_res = self.retriever.retrieve(qa_data["question"], self.config.top_k + 3)
         retrieved_ids = [idx for idx, _ in retriever_res]
-        evidence_chunks = [self.paper_data[qa_data["paper_id"]]["chunks"][chunk_idx] for chunk_idx in retrieved_ids]
+        evidence_chunks = [self.paper_data[self.config.split][qa_data["paper_id"]]["chunks"][chunk_idx] for chunk_idx in retrieved_ids]
         reranked_index, reranked_evidence = self.reranker.rerank(evidence_chunks, qa_data["question"])
         reranked_ids = [retrieved_ids[idx] for idx in reranked_index]
         logger.debug(f"the reranked ids are: {reranked_ids}")
@@ -460,14 +457,14 @@ class QASPERRetrieverRerankerDataGenerator(QASPERDataGenerator):
 
             # change the evidence chunk ids to chunk content.
             # then fit the content into the template.
-            evidence_chunks = [self.paper_data[qa_data["paper_id"]]["chunks"][chunk_idx] for chunk_idx in final_evidence_ids]
+            evidence_chunks = [self.paper_data[self.config.split][qa_data["paper_id"]]["chunks"][chunk_idx] for chunk_idx in final_evidence_ids]
         else: # the evidence is for the dev and test.
             entry["extra_info"]["generation_type"] = "retrieved"
             entry["extra_info"]["evidence_chunk_ids"] = retrieved_ids
             entry["extra_info"]["distractor_chunk_ids"] = []
             entry["reward_model"]["ground_truth"]["gt_evidence"] = gt_evidence_text
             # change the evidence chunk ids to chunk content.
-            evidence_chunks = [self.paper_data[qa_data["paper_id"]]["chunks"][chunk_idx] for chunk_idx in retrieved_ids]
+            evidence_chunks = [self.paper_data[self.config.split][qa_data["paper_id"]]["chunks"][chunk_idx] for chunk_idx in retrieved_ids]
         return evidence_chunks, entry
 
 
