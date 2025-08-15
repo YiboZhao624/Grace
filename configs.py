@@ -26,7 +26,7 @@ class RetrieverConfig:
 # same for chunker.
 @dataclass
 class ChunkerConfig:
-    chunking_strategy: str = "token"
+    chunking_strategy: Literal["greedy_sentence", "greedy_paragraph", "token", "sentence", "paragraph"] = "token"
     # TokenChunker parameters:
     model_name: str = "/root/shared_planing/LLM_model/Qwen3-Embedding-4B"
     max_length: int = 512
