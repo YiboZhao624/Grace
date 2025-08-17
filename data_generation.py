@@ -388,11 +388,11 @@ class QASPERRetrieverDataGenerator(QASPERDataGenerator):
                 evidence_chunks.append(self.paper_data[self.config.split][qa_data["paper_id"]]["chunks"][chunk_idx])
         else: # the evidence is for the dev and test.
             entry["extra_info"]["generation_type"] = "retrieved"
-            entry["extra_info"]["evidence_chunk_ids"] = retrieved_ids
+            entry["extra_info"]["evidence_chunk_ids"] = retrieved_ids[:self.config.top_k]
             entry["extra_info"]["distractor_chunk_ids"] = []
             entry["reward_model"]["ground_truth"]["gt_evidence"] = gt_evidence_text
             # change the evidence chunk ids to chunk content.
-            evidence_chunks = [self.paper_data[self.config.split][qa_data["paper_id"]]["chunks"][chunk_idx] for chunk_idx in retrieved_ids]
+            evidence_chunks = [self.paper_data[self.config.split][qa_data["paper_id"]]["chunks"][chunk_idx] for chunk_idx in retrieved_ids[:self.config.top_k]]
         return evidence_chunks, entry
 
 
@@ -460,11 +460,11 @@ class QASPERRetrieverRerankerDataGenerator(QASPERDataGenerator):
             evidence_chunks = [self.paper_data[self.config.split][qa_data["paper_id"]]["chunks"][chunk_idx] for chunk_idx in final_evidence_ids]
         else: # the evidence is for the dev and test.
             entry["extra_info"]["generation_type"] = "retrieved"
-            entry["extra_info"]["evidence_chunk_ids"] = retrieved_ids
+            entry["extra_info"]["evidence_chunk_ids"] = retrieved_ids[:self.config.top_k]
             entry["extra_info"]["distractor_chunk_ids"] = []
             entry["reward_model"]["ground_truth"]["gt_evidence"] = gt_evidence_text
             # change the evidence chunk ids to chunk content.
-            evidence_chunks = [self.paper_data[self.config.split][qa_data["paper_id"]]["chunks"][chunk_idx] for chunk_idx in retrieved_ids]
+            evidence_chunks = [self.paper_data[self.config.split][qa_data["paper_id"]]["chunks"][chunk_idx] for chunk_idx in retrieved_ids[:self.config.top_k]]
         return evidence_chunks, entry
 
 
