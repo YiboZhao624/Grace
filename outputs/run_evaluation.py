@@ -7,12 +7,19 @@ from utils import read_parquet, save_parquet, setup_logging, extract_answer_or_a
 from evaluator import Evaluator
 import json
 from tqdm import tqdm
+from argparse import ArgumentParser
+
+parser = ArgumentParser()
+parser.add_argument("--path", type=str, default="outputs/QASPER/Qwen3-8B/test/256cs/QASPER_Split-test_Prompt-default_NumberTemplate-False_retriever_reranker_vllm-Qwen3-Embedding-0.6B_TopK-7_WO_GT_Evidence_Rate-0.2_Qwen3-8B_inference.parquet")
+args = parser.parse_args()
+
+path = args.path
 
 logger = setup_logging("Evaluator")
 
 os.environ['TRANSFORMERS_CACHE'] = "/root/.cache/huggingface/hub/"
 
-path = "outputs/QASPER/Qwen3-4B-Instruct-2507/test/256cs/QASPER_Split-test_Prompt-default_NumberTemplate-False_retriever_vllm-Qwen3-Embedding-0.6B_TopK-7_WO_GT_Evidence_Rate-0.2_Qwen3-4B-Instruct-2507_inference.parquet"
+path = "outputs/QASPER/Qwen3-8B/test/256cs/QASPER_Split-test_Prompt-default_NumberTemplate-False_retriever_reranker_vllm-Qwen3-Embedding-0.6B_TopK-7_WO_GT_Evidence_Rate-0.2_Qwen3-8B_inference.parquet"
 
 res_saving_path = "/".join(path.split("/")[:-1])
 generate_method = path.split("/")[-1].split("_WO_GT_Evidence")[0].split("_")[-3:-1]
