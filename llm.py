@@ -48,7 +48,7 @@ class vLLM(LLM):
         }
         try:
             response = requests.post(url, headers=headers, json=data)
-            response.raise_for_status()  # 如果状态码是 4xx 或 5xx，则抛出异常
+            response.raise_for_status()
             response_json = response.json()
             content = response_json["choices"][0]["message"]["content"]
             return content.strip()
