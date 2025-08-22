@@ -505,7 +505,9 @@ def get_data_generator(data_generator_config: DataGeneratorConfigs):
             single_config.method = method
             data_generator = QASPEROracleDataGenerator(chunker, None, single_config)
         elif method == "random":
-            raise NotImplementedError("Random data generator is not implemented yet.")
+            retriever = get_retriever(data_generator_config.retriever_config[method_idx])
+            single_config.method = method
+            data_generator = QASPERRetrieverDataGenerator(chunker, retriever, single_config)
         else:
             raise ValueError(f"Unsupported data generator method: {method}")
         yield data_generator
