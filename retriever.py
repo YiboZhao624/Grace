@@ -226,6 +226,8 @@ def get_retriever(config: RetrieverConfig = None) -> Optional[Retriever]:
         return SentenceTransformerRetriever(config)
     elif retriever_type == "vllm":
         return vLLMRetriever(config)
+    elif retriever_type == "random":
+        return RandomRetriever(config)
     else:
         raise ValueError(f"Unknown retriever type: {retriever_type}")
 
