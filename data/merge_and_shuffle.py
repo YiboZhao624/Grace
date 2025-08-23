@@ -12,6 +12,7 @@ all_data = []
 
 for path in paths:
     data = pd.read_parquet(path)
+    data = data.to_dict(orient="records")
     all_data.extend(data)
 
 random.seed(42)
