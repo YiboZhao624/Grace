@@ -19,8 +19,6 @@ logger = setup_logging("Evaluator")
 
 os.environ['TRANSFORMERS_CACHE'] = "/root/.cache/huggingface/hub/"
 
-path = "outputs/QASPER/Qwen3-8B/test/256cs/QASPER_Split-test_Prompt-default_NumberTemplate-False_retriever_reranker_vllm-Qwen3-Embedding-0.6B_TopK-7_WO_GT_Evidence_Rate-0.2_Qwen3-8B_inference.parquet"
-
 res_saving_path = "/".join(path.split("/")[:-1])
 generate_method = path.split("/")[-1].split("_WO_GT_Evidence")[0].split("_")[-3:-1]
 generate_method = "_".join(generate_method)
