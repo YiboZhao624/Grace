@@ -88,8 +88,8 @@ def evidence_reward(data:str, gt_evidence:str):
     precision = lcs / len(selected_evidence)
     recall = lcs / len(gt_evidence)
 
-    # a larger weight.
-    return precision * recall * 3
+    # 2 times f1 score -> [0,2]
+    return precision * recall / (precision + recall)
 
 def answer_reward(data: str, ground_truth: List[str]):
     # if the model return the correct answer, give 2 reward.
@@ -120,7 +120,8 @@ def answer_reward(data: str, ground_truth: List[str]):
             return max_len
         
         lcs_len = longest_common_substring(nomarlized_answer, nomarlized_ground_truth)
-        return 2 * lcs_len / (len(nomarlized_answer) + len(nomarlized_ground_truth))
+        # [0,2]
+        return 4 * lcs_len / (len(nomarlized_answer) + len(nomarlized_ground_truth))
 
 def bonus_reward(format_reward, choice_reward,
          evidence_reward, answer_reward):
@@ -146,6 +147,8 @@ def reward_function(data,gt_evidences:List[str], gt_answers:List[str])->dict:
 
     choice_r, choice = choice_reward(text, gt_evidences)
     choice_report = 1 if choice == "<llm>" else 0
+    if choice_r == 0:
+        return {"score": total_reward, "choice": choice, "choice_r": choice_r, "evidence": 0, "answer": 0, "format": format_r}
     total_reward += choice_r
     answer_r = 0
     evidence_r = 0
@@ -161,7 +164,7 @@ def reward_function(data,gt_evidences:List[str], gt_answers:List[str])->dict:
         total_reward += answer_r
         return {"score": total_reward, "choice": choice_report, "choice_r": choice_r, "evidence": evidence_r, "answer": answer_r, "format": format_r}
     else:
-        return 0
+        return {"score": 0, "choice": 0, "choice_r": 0, "evidence": 0, "answer": 0, "format": 0}
 
 
 def default_compute_score(data_source, solution_str, ground_truth, extra_info=None, sandbox_fusion_url=None, concurrent_semaphore=None, memory_limit_mb=None): 
