@@ -1,7 +1,12 @@
 data/*/
 test/*
 __pycache__/
+outputs/*/*/*.log
+outputs/*/*/*/*.yaml
 outputs/*/*/*/*/*.parquet
 outputs/*/*/*/*/*.json
+outputs/*.sh
+data/merge.sh
 ckpts/
 log/
+wandb/
