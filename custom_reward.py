@@ -65,7 +65,7 @@ def evidence_reward(data:str, gt_evidence:str):
     # metric 1: How many ground truth evidence has been selected, i.e., recall.
     # metric 2: How precise the evidence is, i.e., precision.
 
-    selected_evidence = data.split("</evidence>")[0].strip("<evidence>")
+    selected_evidence = data.split("</evidence>")[0][len("<evidence>"):]
     # calculate the longest common substring between the selected evidence and the ground truth evidence
     def longest_common_substring(s1:str, s2:str):
         if not s1 or not s2:
@@ -94,7 +94,7 @@ def evidence_reward(data:str, gt_evidence:str):
 def answer_reward(data: str, ground_truth: List[str]):
     # if the model return the correct answer, give 2 reward.
     # else, give 0 reward.
-    answer = data.split("</answer>")[0].strip("<answer>")
+    answer = data.split("</answer>")[0][len("<answer>"):]
     nomarlized_answer = answer.lower().strip()
     nomarlized_ground_truth = ground_truth.lower().strip()
     if nomarlized_answer == nomarlized_ground_truth:
