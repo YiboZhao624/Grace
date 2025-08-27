@@ -24,7 +24,6 @@ class Reranker:
         self.tokenizer = None
         self.device = None
         self.reranker_client = None
-        logger.error("You are using the meta-class for reranker, please use the specific reranker class.")
 
     def _initialize_model(self):
         raise NotImplementedError("Subclasses must implement this method - _initialize_model")
