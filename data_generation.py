@@ -119,23 +119,19 @@ class QASPERDataGenerator:
     # 3. QASPERRetrieverRerankerGenerator: using the retriever and reranker.
     # 4. QASPERRandomRerankerGenerator: using the retriever and reranker and random strategy.
     # 5. QASPEROracleDataGenerator: using the ground truth evidence.
-    def __init__(self, chunker: Chunker, retriever: Union[Retriever, None], configs: DataGeneratorConfigs):
-        # This saves all the configs for this data generator to generate_all.
-        self.configs = configs
-        # For generating one piece of data. We initialize the DataGeneratorConfig.
-        self.config = DataGeneratorConfig()
+    def __init__(self, chunker: Chunker, retriever: Union[Retriever, None], config: DataGeneratorConfig):
+        # self.configs (复数) 不再需要，现在只有一个 self.config (单数)
+        self.config = config
         self.chunker = chunker
         self.retriever = retriever
-        self.data_folder = configs.data_folder
-        # the paper_data and the QA_data will be a dict.
-        # with the keys limited in train, val, and test.
-        # with the values being the dict of correspponding data.
+        self.data_folder = config.data_folder # 从单数 config 获取
         self.paper_data: Dict[str, Dict[str, Dict]] = {}
         self.QA_data:Dict[str, List[Dict]] = {}
-        self.load_data()
+        # load_data 方法现在需要知道要加载哪些 split
+        self.load_data(config.split) 
 
-    def load_data(self) -> Tuple[Dict, Dict]:
-        paper_data, QA_data = load_raw_qasper_data(self.data_folder, self.configs.split)
+    def load_data(self, splits: List[str]) -> None:
+        paper_data, QA_data = load_raw_qasper_data(self.data_folder, splits)
         self.paper_data = paper_data
         self.extract_full_text()
         for split, paper_data in self.paper_data.items():
@@ -330,25 +326,24 @@ class QASPERDataGenerator:
             examples.append(entry)
         return examples
 
-    def generate_all(self) -> Dict[str, List[Dict]]:
-        """遍历 config 的所有组合并生成数据"""
+    def generate_data_for_splits(self) -> Dict[str, List[Dict]]:
+        """
+        为配置中定义的所有 split（如 train, val, test）生成数据。
+        """
         all_examples = {}
-        for split, method in self.configs.iter_combinations():
-            config = DataGeneratorConfigs(
-                dataset=self.configs.dataset,
-                data_folder=self.configs.data_folder,
-                split=split,
-                method=method,
-                top_k=self.configs.top_k,  
-                wo_gt_evidence_rate=self.configs.wo_gt_evidence_rate,
-                prompt_template=self.configs.prompt_template
-            )
-            self.config = config
-
-            logger.info(f"Generating for split={split}, method={method}")
+        
+        # self.config.split is a list, e.g., ["train", "val", "test"]
+        for split in self.config.split:
+            original_split = self.config.split 
+            self.config.split = split
+            
+            logger.info(f"Generating for split='{split}', method='{self.config.method}'")
             examples = self.generate_single()
 
-            all_examples[f"{split}_{method}"] = examples
+            all_examples[f"{split}_{self.config.method}"] = examples
+            
+            self.config.split = original_split
+            
         return all_examples
 
 
@@ -370,6 +365,7 @@ class QASPERRetrieverDataGenerator(QASPERDataGenerator):
                 final_evidence_ids = final_evidence_ids[:self.config.top_k]
                 # record the evidence chunk ids.
                 entry["extra_info"]["gt_evidence_chunk_ids"] = []
+                entry["extra_info"]["evidence_chunk_ids"] = final_evidence_ids
                 entry["extra_info"]["distractor_chunk_ids"] = final_evidence_ids
                 entry["reward_model"]["ground_truth"]["gt_evidence"] = [""]
                 
@@ -377,8 +373,10 @@ class QASPERRetrieverDataGenerator(QASPERDataGenerator):
                 entry["extra_info"]["generation_type"] = "gt_evidence"
                 final_evidence_ids = merge_by_reverse_removal(retrieved_ids, gt_evidence_ids)
                 final_evidence_ids = final_evidence_ids[:self.config.top_k]
+                entry["extra_info"]["gt_evidence_chunk_ids"] = gt_evidence_ids
                 entry["extra_info"]["evidence_chunk_ids"] = final_evidence_ids
                 entry["extra_info"]["distractor_chunk_ids"] = [idx for idx in retrieved_ids if idx not in final_evidence_ids]
+
                 entry["reward_model"]["ground_truth"]["gt_evidence"] = gt_evidence_text
 
             # change the evidence chunk ids to chunk content.
@@ -468,47 +466,26 @@ class QASPERRetrieverRerankerDataGenerator(QASPERDataGenerator):
         return evidence_chunks, entry
 
 
-def get_data_generator(data_generator_config: DataGeneratorConfigs):
-    '''
-    get the data generator according to the configs.
-    '''
-    lengths = [
-        safe_len(data_generator_config.chunker_config),
-        safe_len(data_generator_config.retriever_config),
-        safe_len(data_generator_config.reranker_config),
-    ]
-    target_length = len(data_generator_config.method)
+def get_data_generator(config: DataGeneratorConfig): # 参数变为单数的 config
+    """
+    根据单一、明确的配置获取数据生成器实例。
+    """
+    method = config.method
+    chunker = get_chunker(config.chunker_config)
 
-    assert all(l == 1 or l == target_length for l in lengths), "All configs should have length 1 or match the length of method."
-
-    if lengths[0] == 1 and lengths[0] != target_length:
-        data_generator_config.chunker_config = [data_generator_config.chunker_config[0]] * target_length
-    if lengths[1] == 1 and lengths[1] != target_length:
-        data_generator_config.retriever_config = [data_generator_config.retriever_config[0]] * target_length
-    if lengths[2] == 1 and lengths[2] != target_length:
-        data_generator_config.reranker_config = [data_generator_config.reranker_config[0]] * target_length
-
-    methods = data_generator_config.method
-    for method_idx, method in enumerate(methods):
-        single_config = deepcopy(data_generator_config)
-        chunker = get_chunker(data_generator_config.chunker_config[method_idx])
-        if method == "retriever":
-            retriever = get_retriever(data_generator_config.retriever_config[method_idx])
-            single_config.method = method
-            data_generator = QASPERRetrieverDataGenerator(chunker, retriever, single_config)
-        elif method == "retriever_reranker":
-            retriever = get_retriever(data_generator_config.retriever_config[method_idx])
-            reranker = get_reranker(data_generator_config.reranker_config[method_idx])
-            single_config.method = method
-            data_generator = QASPERRetrieverRerankerDataGenerator(chunker, retriever, reranker, single_config)
-        elif method == "oracle":
-            single_config.method = method
-            data_generator = QASPEROracleDataGenerator(chunker, None, single_config)
-        elif method == "random":
-            retriever = get_retriever(data_generator_config.retriever_config[method_idx])
-            single_config.method = method
-            data_generator = QASPERRetrieverDataGenerator(chunker, retriever, single_config)
-        else:
-            raise ValueError(f"Unsupported data generator method: {method}")
-        yield data_generator
-
+    if method == "retriever":
+        retriever = get_retriever(config.retriever_config)
+        return QASPERRetrieverDataGenerator(chunker, retriever, config)
+    elif method == "retriever_reranker":
+        retriever = get_retriever(config.retriever_config)
+        reranker = get_reranker(config.reranker_config)
+        return QASPERRetrieverRerankerDataGenerator(chunker, retriever, reranker, config)
+    elif method == "oracle":
+        # Oracle 不需要 retriever，所以传入 None
+        return QASPEROracleDataGenerator(chunker, None, config)
+    elif method == "random":
+        # Random retriever 也通过 get_retriever 获取
+        retriever = get_retriever(config.retriever_config)
+        return QASPERRetrieverDataGenerator(chunker, retriever, config)
+    else:
+        raise ValueError(f"Unsupported data generator method: {method}")
