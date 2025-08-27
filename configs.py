@@ -76,6 +76,28 @@ class DataGeneratorConfigs:
         for split, method in product(self.split, self.method):
             yield split, method
 
+    @classmethod
+    def from_dict(cls, cfg: dict):
+        chunker_configs = [ChunkerConfig(**c) for c in cfg.get('chunker', [])]
+        retriever_configs = [RetrieverConfig(**r) for r in cfg.get('retriever', [])]
+        reranker_configs = [RerankerConfig(**rr) for rr in cfg.get('reranker', [])]
+
+        return cls(
+            dataset=cfg['data_generator']['dataset'],
+            data_folder=cfg['data_generator']['data_folder'],
+            split=cfg['data_generator']['split'],
+            method=cfg['data_generator']['method'],
+            top_k=cfg['data_generator']['top_k'],
+            wo_gt_evidence_rate=cfg['data_generator']['wo_gt_evidence_rate'],
+            prompt_template=cfg['data_generator']['prompt_template'],
+            number_template=cfg['data_generator']['number_template'],
+            recall_threshold=cfg['data_generator']['recall_threshold'],
+            precision_threshold=cfg['data_generator']['precision_threshold'],
+            chunker_config=chunker_configs,
+            retriever_config=retriever_configs,
+            reranker_config=reranker_configs,
+        )
+
 @dataclass
 class DataGeneratorConfig:
     dataset: str = "qasper"
