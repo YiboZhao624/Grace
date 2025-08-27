@@ -10,6 +10,8 @@
 # 5. loop the process 2 - 4 for generating more kinds of data.
 # 6. test the difficulty of each kind of data.
 
+import yaml
+import os
 from preprocess import preprocess_QASPER
 from argparse import ArgumentParser
 from retriever import get_retriever
@@ -17,55 +19,109 @@ from chunker import get_chunker
 from configs import PreprocessConfig, RetrieverConfig, ChunkerConfig, DataGeneratorConfigs, RerankerConfig
 from data_generation import QASPERDataGenerator, QASPERRetrieverDataGenerator, QASPEROracleDataGenerator, QASPERRetrieverRerankerDataGenerator, get_data_generator
 from utils import save_parquet, setup_logging
+from configs import (DataGeneratorConfig, ChunkerConfig, 
+                     RetrieverConfig, RerankerConfig)
 
 logger = setup_logging("Data Generation")
 
+def load_config(path="configs/example_configs.yaml"):
+    with open(path, 'r') as f:
+        return yaml.safe_load(f)
 
-custom_PreprocessConfig = PreprocessConfig(
-    dataset=["qasper"],
-    data_folder=["data/qasper"]
-)
+def generate_filename_from_config(config: DataGeneratorConfig, split: str) -> str:
+    # 1. dataset and method.
+    dataset = config.dataset.upper()
+    method = config.method
+    
+    # 2. organize the chunker setting.
+    chunker_cfg = config.chunker_config
+    if chunker_cfg.chunking_strategy == 'token':
+        chunker_str = f"{chunker_cfg.max_length}cs"
+    else:
+        chunker_str = chunker_cfg.chunking_strategy
+        
+    # 3. organize the retriever setting.
+    retriever_str = "None"
+    if config.retriever_config:
+        r_cfg = config.retriever_config
+        if r_cfg.retriever_type == 'bm25':
+            retriever_str = 'bm25'
+        elif r_cfg.retriever_type in ['vllm', 'sentence_transformer']:
+            model_name = r_cfg.model_name.split('/')[-1].replace('-Embedding', '')
+            retriever_str = f"{r_cfg.retriever_type}_{model_name}"
+        else:
+            retriever_str = r_cfg.retriever_type
 
-custom_RetrieverConfigs = [RetrieverConfig(retriever_type="bm25",k1=1.5,b=0.75,),
-                                RetrieverConfig(retriever_type="vllm",base_url="http://localhost:8001",),
-                                RetrieverConfig(retriever_type="vllm",base_url="http://localhost:8001",),
-                            ]
+    # 4. organize the reranker setting.
+    reranker_str = "None"
+    if config.reranker_config:
+        rr_cfg = config.reranker_config
+        model_name = rr_cfg.model_name.split('/')[-1].replace('BAAI-', '').replace("-v2-m3","")
+        reranker_str = f"{rr_cfg.reranker_type}_{model_name}"
 
-custom_RerankerConfigs = [RerankerConfig(reranker_type="vllm",model_name="/root/shared_planing/LLM_model/BAAI-bge-reranker-v2-m3/",base_url="http://localhost:8002",),
-                            RerankerConfig(reranker_type="vllm",model_name="/root/shared_planing/LLM_model/BAAI-bge-reranker-v2-m3/",base_url="http://localhost:8002",),
-                            RerankerConfig(reranker_type="vllm",model_name="/root/shared_planing/LLM_model/BAAI-bge-reranker-v2-m3/",base_url="http://localhost:8002",),
-                            ]
+    # 5. organize the topk setting.
+    top_k_str = f"top{config.top_k}"
+    wogt_rate_str = f"wogt{str(config.wo_gt_evidence_rate).replace('.', '')}"
 
-custom_ChunkerConfig = ChunkerConfig(
-    chunking_strategy = "token",
-    model_name = "/root/shared_planing/LLM_model/Qwen3-Embedding-0.6B",
-    max_length = 256,
-    overlap = 64
-)
+    # 6. organize the filename.
+    parts = [
+        dataset,
+        split,
+        method,
+        chunker_str,
+        retriever_str,
+        reranker_str,
+        top_k_str,
+        wogt_rate_str
+    ]
 
-custom_DataGeneratorConfig = DataGeneratorConfigs(
-    dataset = "qasper",
-    data_folder = "./data/qasper",
-    split = ["train", "val", "test"],
-    method = ["oracle"],
-    top_k = 1,
-    wo_gt_evidence_rate = 0.2,
-    prompt_template = "default",
-    number_template = False,
-    chunker_config = [custom_ChunkerConfig],
-    retriever_config = None,
-    reranker_config = None,
-)
+    filename = "-".join(p for p in parts) + ".parquet"
+    
+    return filename
 
 
 if __name__ == "__main__":
-    custom_data_generator_configs = custom_DataGeneratorConfig
-    for data_generator in get_data_generator(custom_data_generator_configs):
-        data = data_generator.generate_all()
-        for split_method, entries in data.items():
-            split = split_method.split("_")[0]
-            method = split_method.split("_")[1]
-            file_name = f"./data/processed/0806-256cs/QASPER_Split-{split}_Prompt-{custom_data_generator_configs.prompt_template}_NumberTemplate-{custom_data_generator_configs.number_template}_{method}.parquet"
-            save_parquet(entries, file_name)
+    arg_parser = ArgumentParser()
+    arg_parser.add_argument("--config", type=str, default="configs/example_configs.yaml")
+    args = arg_parser.parse_args()
 
-# file_name = f"./data/processed/0806-512cs/QASPER_Split-{split}_Prompt-{data_generator_config.prompt_template}_NumberTemplate-{data_generator_config.number_template}_{method}_{data_generator.retriever.retriever_type}_TopK-{data_generator_config.top_k}_WO_GT_Evidence_Rate-{data_generator_config.wo_gt_evidence_rate}.parquet"
+    config = load_config(args.config)
+    defaults = config['data_generator_defaults']
+    output_base_dir = config['output_base_dir']
+
+    # for each method, run generate_data_for_splits.
+    for method_config in config['methods']:
+        logger.info(f"Method Config: {method_config}")
+        single_config_dict = defaults.copy()
+
+        # Use pop() to get the 'name' and remove it from method_config dict
+        method_name = method_config.pop('name')
+        # merge the config.
+        single_config_dict.update(method_config)
+
+        chunker_cfg = ChunkerConfig(**single_config_dict.pop('chunker_config'))
+        retriever_cfg = RetrieverConfig(**single_config_dict.pop('retriever_config')) if 'retriever_config' in single_config_dict else None
+        reranker_cfg = RerankerConfig(**single_config_dict.pop('reranker_config')) if 'reranker_config' in single_config_dict else None
+        
+        data_gen_config = DataGeneratorConfig(
+            **single_config_dict,
+            chunker_config=chunker_cfg,
+            retriever_config=retriever_cfg,
+            reranker_config=reranker_cfg,
+            method=method_name
+        )
+        logger.info(f"Configs: {data_gen_config}")
+        data_generator = get_data_generator(data_gen_config)
+
+        data = data_generator.generate_data_for_splits()
+
+        # saving
+        for split_method_key, entries in data.items():
+            current_split = split_method_key.split("_")[0]
+            
+            # generate the filename and path
+            output_filename = generate_filename_from_config(data_gen_config, current_split)
+            output_path = os.path.join(output_base_dir, output_filename)
+            
+            save_parquet(entries, output_path)
+            logger.info(f"Successfully generated and saved data to: {output_path}")
