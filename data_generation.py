@@ -284,13 +284,40 @@ class QASPERDataGenerator:
         top_k = self.config.top_k
         wo_gt_evidence_rate = self.config.wo_gt_evidence_rate
         if self.config.split == "train":
-            wo_gt_evidence_entries = random.sample(self.QA_data[self.config.split], int(len(self.QA_data[self.config.split]) * wo_gt_evidence_rate))
+            answerable_qa = []
+            unanswerable_qa = []
+            for qa_data in self.QA_data[self.config.split]:
+                # check if the answer is "Unanswerable"
+                is_unanswerable = any(ref.get("answer") == "Unanswerable" for ref in qa_data.get("references", []))
+                if is_unanswerable:
+                    unanswerable_qa.append(qa_data)
+                else:
+                    answerable_qa.append(qa_data)
+
+            # 2. randomly sample "wo_gt_evidence" from answerable_qa
+            num_to_sample = int(len(self.QA_data[self.config.split]) * wo_gt_evidence_rate) - len(unanswerable_qa)
+            sampled_wo_gt_entries = random.sample(answerable_qa, num_to_sample)
+            
+            # create a set of question_id for fast lookup
+            sampled_wo_gt_set = {qa['question_id'] for qa in sampled_wo_gt_entries}
+            
+            # 3. iterate over all data, finally determine the gt_evidence flag for each sample
             for qa in self.QA_data[self.config.split]:
-                if qa in wo_gt_evidence_entries:
+                # use set for fast lookup
+                is_sampled_as_wo_gt = qa.get('question_id') in sampled_wo_gt_set
+                is_naturally_unanswerable = any(ref.get("answer") == "Unanswerable" for ref in qa.get("references", []))
+
+                if is_naturally_unanswerable or is_sampled_as_wo_gt:
                     qa["gt_evidence"] = False
                 else:
                     qa["gt_evidence"] = True
-            logger.info(f"the number of the entries without ground truth evidence is {wo_gt_evidence_rate}*{len(self.QA_data[self.config.split])} = {len(wo_gt_evidence_entries)}")
+            
+            total_wo_gt_count = len(unanswerable_qa) + num_to_sample
+            logger.info(
+                f"Total entries w/o ground truth evidence: {total_wo_gt_count} "
+                f"(Naturally Unanswerable: {len(unanswerable_qa)}, "
+                f"Sampled from Answerable: {num_to_sample})"
+            )
 
         examples = []
         prev_paper_id = None
@@ -300,7 +327,6 @@ class QASPERDataGenerator:
                 self.retriever.reset()
                 self.retriever.index(self.paper_data[self.config.split][qa_data["paper_id"]]["chunks"])
                 prev_paper_id = qa_data["paper_id"]
-
             
             # copy the basic and extra information.
             entry = self._prepare_entry_metadata(qa_data)
@@ -376,7 +402,6 @@ class QASPERRetrieverDataGenerator(QASPERDataGenerator):
                 entry["extra_info"]["gt_evidence_chunk_ids"] = gt_evidence_ids
                 entry["extra_info"]["evidence_chunk_ids"] = final_evidence_ids
                 entry["extra_info"]["distractor_chunk_ids"] = [idx for idx in retrieved_ids if idx not in final_evidence_ids]
-
                 entry["reward_model"]["ground_truth"]["gt_evidence"] = gt_evidence_text
 
             # change the evidence chunk ids to chunk content.
@@ -442,6 +467,7 @@ class QASPERRetrieverRerankerDataGenerator(QASPERDataGenerator):
                 # record the evidence chunk ids.
                 entry["extra_info"]["gt_evidence_chunk_ids"] = []
                 entry["extra_info"]["distractor_chunk_ids"] = final_evidence_ids
+                entry["extra_info"]["evidence_chunk_ids"] = final_evidence_ids
                 entry["reward_model"]["ground_truth"]["gt_evidence"] = [""]
                 
             else:
