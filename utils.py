@@ -4,6 +4,7 @@ from typing import List, Dict, Union
 import pandas as pd
 import logging
 import re
+import sys
 
 def extract_evidence_or_none(text:str):
     # if the text contains <evidence>...</evidence> tag, return the evidence.
@@ -24,21 +25,31 @@ def extract_answer_or_all(text:str):
         return text
 
 # Configure logging
-def setup_logging(level=logging.INFO, log_file=None):
-    """Setup logging configuration"""
-    logging.basicConfig(
-        level=level,
-        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-        datefmt='%H:%M:%S',
-        handlers=[
-            logging.StreamHandler(),  # Console handler
-            *([logging.FileHandler(log_file)] if log_file else [])
-        ],
-    )
-    return logging.getLogger(__name__)
+def setup_logging(name, level=logging.INFO, log_file=None):
+    logger = logging.getLogger(name)
+    if logger.hasHandlers():
+        logger.handlers.clear()
 
-# Create a default logger
-logger = setup_logging()
+    logger.setLevel(level)
+
+    formatter = logging.Formatter(
+        '%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        datefmt='%H:%M:%S'
+    )
+
+    ch = logging.StreamHandler(sys.stdout)
+    ch.setFormatter(formatter)
+    logger.addHandler(ch)
+
+    if log_file:
+        fh = logging.FileHandler(log_file)
+        fh.setFormatter(formatter)
+        logger.addHandler(fh)
+        
+    logger.propagate = False 
+
+    return logger
+
 
 def load_raw_qasper_data(data_folder: str, split: Union[List[str], str] = "train"):
     all_paper_data = {}
