@@ -64,8 +64,6 @@ if deduplicate and deduplicate_type == "hard":
 
 if deduplicate and deduplicate_type == "soft":
     all_data = [list(x) for x in zip(*all_data)]
-    print(len(all_data))
-    print(len(all_data[0]))
     filtered_cnt = 0
     filtered_data = []
     for data in all_data:
@@ -77,7 +75,8 @@ if deduplicate and deduplicate_type == "soft":
             unique_lists.append(retrieved_chunks)
         unique_idx = deduplicate_results(unique_lists)
         filtered_data.extend([data[i] for i in unique_idx])
-    print(len(filtered_data))
+    print("len(all_data):", len(all_data) * len(all_data[0]))
+    print("len(merged_data):", len(filtered_data))
     all_data = filtered_data
 
 random.seed(seed)
