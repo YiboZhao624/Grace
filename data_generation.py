@@ -413,6 +413,7 @@ class QASPERRetrieverDataGenerator(QASPERDataGenerator):
             entry["extra_info"]["generation_type"] = "retrieved"
             entry["extra_info"]["evidence_chunk_ids"] = retrieved_ids[:self.config.top_k]
             entry["extra_info"]["distractor_chunk_ids"] = []
+            entry["extra_info"]["gt_evidence_chunk_ids"] = gt_evidence_ids
             entry["reward_model"]["ground_truth"]["gt_evidence"] = gt_evidence_text
             entry["reward_model"]["ground_truth"]["gt_evidence_retrieved"] = any(gt_evidence_id in retrieved_ids[:self.config.top_k] for gt_evidence_id in gt_evidence_ids)
             # change the evidence chunk ids to chunk content.
@@ -487,6 +488,7 @@ class QASPERRetrieverRerankerDataGenerator(QASPERDataGenerator):
             entry["extra_info"]["generation_type"] = "retrieved"
             entry["extra_info"]["evidence_chunk_ids"] = retrieved_ids[:self.config.top_k]
             entry["extra_info"]["distractor_chunk_ids"] = []
+            entry["extra_info"]["gt_evidence_chunk_ids"] = gt_evidence_ids
             entry["reward_model"]["ground_truth"]["gt_evidence"] = gt_evidence_text
             entry["reward_model"]["ground_truth"]["gt_evidence_retrieved"] = any(gt_evidence_id in retrieved_ids[:self.config.top_k] for gt_evidence_id in gt_evidence_ids)
             # change the evidence chunk ids to chunk content.
