@@ -1,14 +1,13 @@
 from rouge_score import rouge_scorer
 
-# 在文件顶部全局初始化，避免重复创建对象
+
 scorer = rouge_scorer.RougeScorer(['rougeL'], use_stemmer=True)
 
 def rouge_l_reward(generated_text: str, ground_truth_list: list[str], reward_multiplier: float = 5.0):
-    """使用 ROUGE-L F1 计算奖励，并放大奖励值"""
+    """ROUGE-L F1 as reward, and amplify the reward value to align with the <llm> part."""
     if not generated_text or not ground_truth_list:
         return 0.0
 
-    # 计算与每个标准答案的分数，取最高值
     max_f1 = 0.0
     for gt in ground_truth_list:
         if not gt: continue
@@ -87,17 +86,21 @@ def choice_reward(data:str, gt_evidence):
         return 0, choice
 
 
-def bonus_reward(format_reward, choice_reward,
-         evidence_reward, answer_reward):
-    # check the alignment of the model output.
-    # if the model choose the evidence tag correctly, return the correct evidence and answer with the designed format, return a large bonus.
-    # if the model choose the llm tag correctly, return the answer aligned with the original model with designed format, return a large bonus.
-    pass
-
-def recitation_punish(format_reward, choice_reward,
-         evidence_reward, answer_reward):
-    # if the model choose the evidence tag correctly, but select the evidence incorrectly with a correct answer, return a larger penalty.
-    pass
+def length_penalty(generated_text: str, ground_truth_list: list[str], min_length_ratio: float = 0.8):
+    """
+    if the length of the generated text is significantly shorter than the average length of the ground truth, then penalize the reward.
+    """
+    if not ground_truth_list:
+        return 0.0
+    
+    avg_gt_len = sum(len(gt) for gt in ground_truth_list) / len(ground_truth_list)
+    gen_len = len(generated_text)
+    
+    # if the length of the generated text is significantly shorter than the average length of the ground truth, then penalize the reward.
+    if gen_len < avg_gt_len * min_length_ratio:
+        return - (1.0 - gen_len / (avg_gt_len * min_length_ratio))
+    
+    return 0.0
 
 def reward_function(data,gt_evidences:List[str], gt_answers:List[str])->dict:
     '''
@@ -124,12 +127,16 @@ def reward_function(data,gt_evidences:List[str], gt_answers:List[str])->dict:
         evidence_r = max(evidence_r, rouge_l_reward(evidence_text, gt_evidences, reward_multiplier=4.0))
         total_reward += evidence_r
         total_reward += answer_r
-        return {"score": total_reward, "choice": choice_report, "choice_r": choice_r, "evidence": evidence_r, "answer": answer_r, "format": format_r}
+        answer_length_punish = length_penalty(answer_text, gt_answers)
+        total_reward += answer_length_punish
+        evidence_length_punish = length_penalty(evidence_text, gt_evidences)
+        total_reward += evidence_length_punish
+        return {"score": total_reward, "choice": choice_report, "choice_r": choice_r, "evidence": evidence_r, "answer": answer_r, "format": format_r, "alp": answer_length_punish, "elp": evidence_length_punish}
     elif choice == "<llm>":
         total_reward += answer_r
-        return {"score": total_reward, "choice": choice_report, "choice_r": choice_r, "evidence": evidence_r, "answer": answer_r, "format": format_r}
+        return {"score": total_reward, "choice": choice_report, "choice_r": choice_r, "evidence": evidence_r, "answer": answer_r, "format": format_r, "alp":0, "elp":0}
     else:
-        return {"score": 0, "choice": 0, "choice_r": 0, "evidence": 0, "answer": 0, "format": 0}
+        return {"score": 0, "choice": 0, "choice_r": 0, "evidence": 0, "answer": 0, "format": 0, "alp":0, "elp":0}
 
 def val_reward_function(data,gt_evidences:List[str], gt_answers:List[str], gt_evidence_retrieved:bool)->dict:
     total_reward = 0
@@ -151,12 +158,16 @@ def val_reward_function(data,gt_evidences:List[str], gt_answers:List[str], gt_ev
         evidence_r = max(evidence_r, rouge_l_reward(evidence_text, gt_evidences, reward_multiplier=4.0))
         total_reward += evidence_r
         total_reward += answer_r
-        return {"score": total_reward, "choice": choice, "choice_r": choice_r, "evidence": evidence_r, "answer": answer_r, "format": format_r}
+        alp = length_penalty(answer_text, gt_answers)
+        total_reward += alp
+        elp = length_penalty(evidence_text, gt_evidences)
+        total_reward += elp
+        return {"score": total_reward, "choice": choice, "choice_r": choice_r, "evidence": evidence_r, "answer": answer_r, "format": format_r, "alp": alp, "elp": elp}
     elif choice == "<llm>":
         total_reward += answer_r
-        return {"score": total_reward, "choice": choice, "choice_r": choice_r, "evidence": evidence_r, "answer": answer_r, "format": format_r}
+        return {"score": total_reward, "choice": choice, "choice_r": choice_r, "evidence": evidence_r, "answer": answer_r, "format": format_r, "alp": 0, "elp": 0}
     else:
-        return {"score": 0, "choice": 0, "choice_r": 0, "evidence": 0, "answer": 0, "format": 0}
+        return {"score": 0, "choice": 0, "choice_r": 0, "evidence": 0, "answer": 0, "format": 0, "alp": 0, "elp": 0}
 
 def default_compute_score(data_source, solution_str, ground_truth, extra_info=None, sandbox_fusion_url=None, concurrent_semaphore=None, memory_limit_mb=None): 
     """Compute the score for a given solution based on the data source.
