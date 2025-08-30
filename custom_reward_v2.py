@@ -70,9 +70,14 @@ def format_reward(data:str):
     return 0.5
 
 def choice_reward(data:str, gt_evidence):
-    # if the model choose the correct tag, give 0.5 reward
-    # else, give 0 reward.
-    gt_choice = "<evidence>" if gt_evidence != [""] else "<llm>"
+    if len(gt_evidence) == 1:
+        if gt_evidence == [""]:
+            gt_choice = "<llm>"
+        else:
+            gt_choice = "<evidence>"
+    else:
+        gt_choice = "evidence"
+
     choice = "<evidence>" if "<evidence>" in data else "<llm>"
     if choice == gt_choice and choice == "<evidence>":
         return 1, choice
@@ -107,7 +112,7 @@ def reward_function(data,gt_evidences:List[str], gt_answers:List[str])->dict:
     choice_r, choice = choice_reward(text, gt_evidences)
     choice_report = 1 if choice == "<llm>" else 0
     if choice_r == 0:
-        return {"score": total_reward, "choice": choice, "choice_r": choice_r, "evidence": 0, "answer": 0, "format": format_r}
+        return {"score": total_reward, "choice": choice_report, "choice_r": choice_r, "evidence": 0, "answer": 0, "format": format_r}
     total_reward += choice_r
     answer_r = 0
     evidence_r = 0
@@ -146,10 +151,10 @@ def val_reward_function(data,gt_evidences:List[str], gt_answers:List[str], gt_ev
         evidence_r = max(evidence_r, rouge_l_reward(evidence_text, gt_evidences, reward_multiplier=4.0))
         total_reward += evidence_r
         total_reward += answer_r
-        return {"score": total_reward, "choice": choice_r, "choice_r": choice_r, "evidence": evidence_r, "answer": answer_r, "format": format_r}
+        return {"score": total_reward, "choice": choice, "choice_r": choice_r, "evidence": evidence_r, "answer": answer_r, "format": format_r}
     elif choice == "<llm>":
         total_reward += answer_r
-        return {"score": total_reward, "choice": choice_r, "choice_r": choice_r, "evidence": evidence_r, "answer": answer_r, "format": format_r}
+        return {"score": total_reward, "choice": choice, "choice_r": choice_r, "evidence": evidence_r, "answer": answer_r, "format": format_r}
     else:
         return {"score": 0, "choice": 0, "choice_r": 0, "evidence": 0, "answer": 0, "format": 0}
 
@@ -178,7 +183,7 @@ def default_compute_score(data_source, solution_str, ground_truth, extra_info=No
        gt_evidence = ground_truth["gt_evidence"]
        gt_answer = ground_truth["answer"]
        gt_evidence_retrieved = ground_truth.get("gt_evidence_retrieved", None)
-       if gt_evidence_retrieved is not None:
+       if gt_evidence_retrieved is None:
            res = reward_function(solution_str, gt_evidence, gt_answer)
        else:
            res = val_reward_function(solution_str, gt_evidence, gt_answer, gt_evidence_retrieved)
@@ -194,7 +199,13 @@ def default_compute_score(data_source, solution_str, ground_truth, extra_info=No
 
 
 if __name__ == "__main__":
-    data = "<llm>This is a test</llm><answer>This is a test</answer>"
-    gt_evidence = [""]
-    answer = choice_reward(data, gt_evidence)
-    print(answer)
+    ans = "<llm>This is a test</llm><answer>This is a test</answer>"
+    from utils import read_parquet
+    path = "data/merged/0829-QASPER-soft_deduplicated-0.4.parquet"
+    data = read_parquet(path)
+    data = data[:5]
+    print(len(data))
+    for item in data:
+        gt = item["reward_model"]["ground_truth"]
+        reward = default_compute_score("QASPER", ans, gt)
+        print(reward)
