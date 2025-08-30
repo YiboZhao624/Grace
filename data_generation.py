@@ -436,6 +436,8 @@ class QASPEROracleDataGenerator(QASPERDataGenerator):
         entry["extra_info"]["gt_evidence_chunk_ids"] = gt_evidence_ids
         entry["extra_info"]["distractor_chunk_ids"] = []
         entry["reward_model"]["ground_truth"]["gt_evidence"] = gt_evidence_text
+        if self.config.split != "train":
+            entry["reward_model"]["ground_truth"]["gt_evidence_retrieved"] = True
         # due to there is no distractor evidence, we directly return the evidence text.
         return gt_evidence_text, entry
 
