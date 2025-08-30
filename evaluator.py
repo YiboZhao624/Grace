@@ -7,7 +7,7 @@ import re
 import copy
 import string
 from tqdm import tqdm
-from custom_reward import reward_function
+from custom_reward_v2 import reward_function
 from utils import setup_logging
 
 logger = setup_logging("Evaluator")
@@ -225,9 +225,46 @@ class Evaluator:
                 non_empty_gts.append(candidate_answer_list)
         return non_empty_answer, non_empty_gts, filtered_empty_entries
 
+    def _demonstrate(self, metric_name: str, scores: List[float], full_answers: List[str], chosen_evidences: List[str], answers: List[str], ground_truths: List[List[str]], ground_truth_evidences: List[List[str]], num_examples: int = 3):
+        """通过 logger 展示指定 metric 的 top N 和 bottom N 案例"""
+        if not scores:
+            return
+            
+        # 将分数和索引配对，以便排序后能找回原文
+        indexed_scores = list(enumerate(scores))
+        
+        # 按分数排序
+        sorted_scores = sorted(indexed_scores, key=lambda x: x[1], reverse=True)
+        
+        logger.info(f"\n{'='*20} Demonstrator for Metric: {metric_name} {'='*20}")
+        
+        # 展示 Top N
+        logger.info(f"\n--- Top {num_examples} Highest Scores ---")
+        for i in range(min(num_examples, len(sorted_scores))):
+            original_index, score = sorted_scores[i]
+            logger.info(f"  Rank {i+1}: Score = {score:.4f} (Original Index: {original_index})")
+            logger.info(f"    - Generated Answer: {answers[original_index]}")
+            logger.info(f"    - Ground Truths: {ground_truths[original_index]}")
+            if chosen_evidences[original_index]: # 仅在有选择证据时展示
+                logger.info(f"    - Chosen Evidence: {chosen_evidences[original_index]}")
+                logger.info(f"    - GT Evidences: {ground_truth_evidences[original_index]}")
+            logger.info("-" * 10)
 
+        # 展示 Bottom N
+        logger.info(f"\n--- Bottom {num_examples} Lowest Scores ---")
+        for i in range(min(num_examples, len(sorted_scores))):
+            original_index, score = sorted_scores[-(i+1)]
+            logger.info(f"  Rank {len(sorted_scores)-i}: Score = {score:.4f} (Original Index: {original_index})")
+            logger.info(f"    - Generated Answer: {answers[original_index]}")
+            logger.info(f"    - Ground Truths: {ground_truths[original_index]}")
+            if chosen_evidences[original_index]: # 仅在有选择证据时展示
+                logger.info(f"    - Chosen Evidence: {chosen_evidences[original_index]}")
+                logger.info(f"    - GT Evidences: {ground_truth_evidences[original_index]}")
+            logger.info("-" * 10)
+        
+        logger.info(f"{'='*20} End of Demonstrator for {metric_name} {'='*20}\n")
 
-    def evaluate(self,full_answer: List[str], chosen_evidences:List[str], answers: List[str], ground_truths: List[List[str]], ground_truth_evidences: List[List[str]]) -> dict:
+    def evaluate(self,full_answer: List[str], chosen_evidences:List[str], answers: List[str], ground_truths: List[List[str]], ground_truth_evidences: List[List[str]], num_examples: int = 3) -> dict:
         if len(answers) != len(ground_truths):
             raise ValueError("The number of answers and ground_truths must be the same.")
         logger.info(f"evaluating the answers and ground_truths with {self.metrics} metrics")
@@ -345,6 +382,24 @@ class Evaluator:
                 result_RR = self._RR(full_answer[i], ground_truths[i], ground_truth_evidences[i])
                 for key, value in result_RR.items():
                     reward_results[key] = reward_results.get(key, []) + [value]
+
+        logger.info("Demonstrating Top/Bottom 5 entries for each metric...")
+        all_results_for_demo = {**answer_results, **evidence_results, **reward_results}
+        for metric_name, scores in all_results_for_demo.items():
+            try:
+                self._demonstrate(
+                    metric_name=metric_name,
+                    scores=scores,
+                    full_answers=full_answer,
+                    chosen_evidences=chosen_evidences,
+                    answers=answers,
+                    ground_truths=ground_truths,
+                    ground_truth_evidences=ground_truth_evidences,
+                    num_examples=num_examples
+                )
+            except Exception as e:
+                logger.error(f"Error demonstrating {metric_name}: {e}")
+                continue
 
         return answer_results, evidence_results, reward_results
 
