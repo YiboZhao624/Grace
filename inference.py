@@ -1,6 +1,7 @@
 # This file is used to conduct inference.
 # to make the data generation more aligned, we use the same parquet file for inference.
 
+from dataclasses import dataclass
 from llm import vLLM
 from utils import read_parquet, save_parquet, setup_logging, extract_answer_or_all, extract_evidence_or_none
 from typing import List, Dict, Literal
@@ -12,20 +13,57 @@ from configs import LLMConfig, InferenceConfigs
 logger = setup_logging("Inference")
 os.environ['TRANSFORMERS_CACHE'] = "/root/.cache/huggingface/hub/"
 
+@dataclass
+class ResolvedFilePath:
+    dataset: str
+    split: str
+    method: str
+    chunk_size: str
+    retriever: str
+    reranker: str
+    top_k: str
+    wogt_rate: str
+
+def resolve_file_name(file_name: str) -> ResolvedFilePath:
+    file_name_list = file_name.split("/")[-1].split("-")
+    resolved_file_name = ResolvedFilePath(
+        dataset = file_name_list[0],
+        split = file_name_list[1],
+        method = file_name_list[2],
+        chunk_size = file_name_list[3],
+        retriever = file_name_list[4],
+        reranker = file_name_list[5],
+        top_k = file_name_list[6],
+        wogt_rate = file_name_list[7]
+    )
+    return resolved_file_name
+
+
+# "/root/shared_planing/LLM_model/Qwen3-4B-Instruct-2507"
 
 custom_InferenceConfigs = InferenceConfigs(
     llm_config = LLMConfig(
-        model_name = "/root/shared_planing/LLM_model/Qwen3-8B",
+        model_name = "830_ckpt140",
         url = "http://localhost:8003"
     ),
     data_path = [
-    "data/processed/0806-256cs/QASPER_Split-test_Prompt-default_NumberTemplate-False_retriever_vllm-Qwen3-Embedding-0.6B_TopK-7_WO_GT_Evidence_Rate-0.2.parquet",
-    "data/processed/0806-512cs/QASPER_Split-test_Prompt-default_NumberTemplate-False_retriever_bm25_TopK-7_WO_GT_Evidence_Rate-0.2.parquet",
-    "data/processed/0806-512cs/QASPER_Split-test_Prompt-default_NumberTemplate-False_retriever_reranker_vllm-Qwen3-Embedding-0.6B_TopK-7_WO_GT_Evidence_Rate-0.2.parquet",
-    "data/processed/0806-512cs/QASPER_Split-test_Prompt-default_NumberTemplate-False_retriever_vllm-Qwen3-Embedding-0.6B_TopK-7_WO_GT_Evidence_Rate-0.2.parquet"
+        "data/processed/0829-0.4/QASPER-test-retriever_reranker-512cs-vllm_Qwen3-0.6B-vllm_-top3-wogt04.parquet",
+        # "data/processed/0829-0.4/QASPER-test-retriever-512cs-bm25-None-top3-wogt04.parquet",
+        "data/processed/0829-0.4/QASPER-test-retriever-512cs-random-None-top3-wogt04.parquet",
+        "data/processed/0829-0.4/QASPER-test-retriever-512cs-vllm_Qwen3-0.6B-None-top3-wogt04.parquet",
+        "data/processed/0829-0.4/QASPER-test-oracle-512cs-None-None-top3-wogt04.parquet"
     ]
 )
-
+        # "data/processed/0815-256cs-greedy-sent/QASPER_Split-test_Prompt-default_NumberTemplate-False_retriever_bm25_TopK-7_WO_GT_Evidence_Rate-0.2.parquet",
+        # "data/processed/0815-256cs-greedy-sent/QASPER_Split-test_Prompt-default_NumberTemplate-False_retriever_reranker_vllm-Qwen3-Embedding-0.6B_TopK-7_WO_GT_Evidence_Rate-0.2.parquet",
+        # "data/processed/0815-256cs-greedy-sent/QASPER_Split-test_Prompt-default_NumberTemplate-False_retriever_vllm-Qwen3-Embedding-0.6B_TopK-7_WO_GT_Evidence_Rate-0.2.parquet",
+        # "data/processed/0815-512cs-greedy-sent/QASPER_Split-test_Prompt-default_NumberTemplate-False_retriever_bm25_TopK-7_WO_GT_Evidence_Rate-0.2.parquet",
+        # "data/processed/0815-512cs-greedy-sent/QASPER_Split-test_Prompt-default_NumberTemplate-False_retriever_reranker_vllm-Qwen3-Embedding-0.6B_TopK-7_WO_GT_Evidence_Rate-0.2.parquet",
+        # "data/processed/0815-512cs-greedy-sent/QASPER_Split-test_Prompt-default_NumberTemplate-False_retriever_vllm-Qwen3-Embedding-0.6B_TopK-7_WO_GT_Evidence_Rate-0.2.parquet"
+# "data/processed/0806-256cs/QASPER_Split-test_Prompt-default_NumberTemplate-False_retriever_vllm-Qwen3-Embedding-0.6B_TopK-7_WO_GT_Evidence_Rate-0.2.parquet",
+# "data/processed/0806-512cs/QASPER_Split-test_Prompt-default_NumberTemplate-False_retriever_bm25_TopK-7_WO_GT_Evidence_Rate-0.2.parquet",
+# "data/processed/0806-512cs/QASPER_Split-test_Prompt-default_NumberTemplate-False_retriever_reranker_vllm-Qwen3-Embedding-0.6B_TopK-7_WO_GT_Evidence_Rate-0.2.parquet",
+# "data/processed/0806-512cs/QASPER_Split-test_Prompt-default_NumberTemplate-False_retriever_vllm-Qwen3-Embedding-0.6B_TopK-7_WO_GT_Evidence_Rate-0.2.parquet"
 # "data/processed/0806-256cs/QASPER_Split-test_Prompt-default_NumberTemplate-False_retriever_bm25_TopK-7_WO_GT_Evidence_Rate-0.2.parquet",
 # data/processed/0806-256cs/QASPER_Split-test_Prompt-default_NumberTemplate-False_retriever_reranker_vllm-Qwen3-Embedding-0.6B_TopK-7_WO_GT_Evidence_Rate-0.2.parquet",
 # "data/processed/0806-256cs/QASPER_Split-test_Prompt-default_NumberTemplate-False_retriever_vllm-Qwen3-Embedding-0.6B_TopK-7_WO_GT_Evidence_Rate-0.2.parquet"
@@ -52,9 +90,17 @@ if __name__ == "__main__":
         data = read_parquet(data_path)
 
         llm_name = custom_InferenceConfigs.llm_config.model_name.split("/")[-1]
-        split = data_path.split("/")[-1].split("Split-")[1].split("_")[0]
-        Dataset_name = data_path.split("/")[-1].split("_Split-")[0]
-        data_chunk_size = data_path.split("/")[-2].split("-")[-1]
+
+        resolved_file_name = resolve_file_name(data_path)
+        split = resolved_file_name.split
+        Dataset_name = resolved_file_name.dataset
+        data_chunk_size = resolved_file_name.chunk_size
+        retriever = resolved_file_name.retriever
+        reranker = resolved_file_name.reranker
+        top_k = resolved_file_name.top_k
+        wogt_rate = resolved_file_name.wogt_rate
+        generate_method = resolved_file_name.method
+
         res_saving_path = f"outputs/{Dataset_name}/{llm_name}/{split}/{data_chunk_size}"
         os.makedirs(res_saving_path, exist_ok=True)
         saving_path = os.path.join(res_saving_path, data_path.replace(".parquet", f"_{llm_name}_inference.parquet").split("/")[-1])
@@ -66,16 +112,7 @@ if __name__ == "__main__":
         logger.info(f"inference done, the data is saved to {saving_path}")
         logger.info(f"the first data is: {data[0]}")
 
-        
-        
-        generate_method = saving_path.split("/")[-1].split("_WO_GT_Evidence")[0].split("_")[-3:-1]
-        generate_method = "_".join(generate_method)
-        W_GT_Evidence = saving_path.split("/")[-1].split("_WO_GT_Evidence")[1].split("_")[0]
-        
-        
-
         os.makedirs(res_saving_path, exist_ok=True)
-
 
         full_answers = [item["answer"] for item in data]
         chosen_evidences = [extract_evidence_or_none(item["answer"]) for item in data]
@@ -131,19 +168,16 @@ if __name__ == "__main__":
         for key, value in evidence_results.items():
             evidence_results[key] = sum(value) / len(value)
         for key, value in reward_results.items():
-            reward_results[key] = sum(value) / len(value)
+            try:
+                reward_results[key] = sum(value) / len(value)
+            except Exception as e:
+                logger.error(f"Error aggregating {key}: {e}")
+                reward_results[key] = 0
 
         all_results = {
             "answer_results": answer_results,
             "evidence_results": evidence_results,
             "reward_results": reward_results,
         }
-        with open(os.path.join(res_saving_path, f"{generate_method}_{W_GT_Evidence}_all_results.json"), "w") as f:
+        with open(os.path.join(res_saving_path, f"{generate_method}_{retriever}_{reranker}_{top_k}_{wogt_rate}_all_results.json"), "w") as f:
             json.dump(all_results, f, indent=4)
-
-        # with open(os.path.join(res_saving_path, f"{generate_method}_{W_GT_Evidence}_answer_results.json"), "w") as f:
-        #     json.dump(answer_results, f, indent=4)
-        # with open(os.path.join(res_saving_path, f"{generate_method}_{W_GT_Evidence}_evidence_results.json"), "w") as f:
-        #     json.dump(evidence_results, f, indent=4)
-        # with open(os.path.join(res_saving_path, f"{generate_method}_{W_GT_Evidence}_reward_results.json"), "w") as f:
-        #     json.dump(reward_results, f, indent=4)
