@@ -3,14 +3,40 @@ import os
 # Add the parent directory to the Python path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+from dataclasses import dataclass
 from utils import read_parquet, save_parquet, setup_logging, extract_answer_or_all, extract_evidence_or_none
 from evaluator import Evaluator
 import json
 from tqdm import tqdm
 from argparse import ArgumentParser
 
+@dataclass
+class ResolvedFilePath:
+    dataset: str
+    split: str
+    method: str
+    chunk_size: str
+    retriever: str
+    reranker: str
+    top_k: str
+    wogt_rate: str
+
+def resolve_file_name(file_name: str) -> ResolvedFilePath:
+    file_name_list = file_name.split("/")[-1].split("-")
+    resolved_file_name = ResolvedFilePath(
+        dataset = file_name_list[0],
+        split = file_name_list[1],
+        method = file_name_list[2],
+        chunk_size = file_name_list[3],
+        retriever = file_name_list[4],
+        reranker = file_name_list[5],
+        top_k = file_name_list[6],
+        wogt_rate = file_name_list[7]
+    )
+    return resolved_file_name
+
 parser = ArgumentParser()
-parser.add_argument("--path", type=str, default="outputs/QASPER/Qwen3-8B/test/256cs/QASPER_Split-test_Prompt-default_NumberTemplate-False_retriever_reranker_vllm-Qwen3-Embedding-0.6B_TopK-7_WO_GT_Evidence_Rate-0.2_Qwen3-8B_inference.parquet")
+parser.add_argument("--path", type=str)
 args = parser.parse_args()
 
 path = args.path
@@ -19,25 +45,27 @@ logger = setup_logging("Evaluator")
 
 os.environ['TRANSFORMERS_CACHE'] = "/root/.cache/huggingface/hub/"
 
+# saving the res at the same folder as the inference results.
 res_saving_path = "/".join(path.split("/")[:-1])
-generate_method = path.split("/")[-1].split("_WO_GT_Evidence")[0].split("_")[-3:-1]
-generate_method = "_".join(generate_method)
-W_GT_Evidence = path.split("/")[-1].split("_WO_GT_Evidence")[1].split("_")[0]
+
+resolved_file_name = resolve_file_name(path)
+Dataset_name = resolved_file_name.dataset
+data_chunk_size = resolved_file_name.chunk_size
+retriever = resolved_file_name.retriever
+reranker = resolved_file_name.reranker
+top_k = resolved_file_name.top_k
+wogt_rate = resolved_file_name.wogt_rate
+generate_method = resolved_file_name.method
 
 os.makedirs(res_saving_path, exist_ok=True)
 
 data = read_parquet(path)
-
-# logger.info(f"the first data is: {data[0]}")
-
-
 
 full_answers = [item["answer"] for item in data]
 chosen_evidences = [extract_evidence_or_none(item["answer"]) for item in data]
 answers = [extract_answer_or_all(item["answer"]) for item in data]
 
 references = [item["extra_info"]["references"] for item in data]
-# reference is a list of gt_answers, for a single question.
 ground_truths = []
 ground_truth_evidences = []
 unanswerable_index = []
@@ -86,19 +114,17 @@ for key, value in answer_results.items():
 for key, value in evidence_results.items():
     evidence_results[key] = sum(value) / len(value)
 for key, value in reward_results.items():
-    reward_results[key] = sum(value) / len(value)
+    try:
+        reward_results[key] = sum(value) / len(value)
+    except Exception as e:
+        logger.error(f"Error aggregating {key}: {e}")
+        reward_results[key] = 0
+
 
 all_results = {
     "answer_results": answer_results,
     "evidence_results": evidence_results,
     "reward_results": reward_results,
 }
-with open(os.path.join(res_saving_path, f"{generate_method}_{W_GT_Evidence}_all_results.json"), "w") as f:
+with open(os.path.join(res_saving_path, f"{generate_method}_{wogt_rate}_{retriever}_{reranker}_{top_k}_{data_chunk_size}_all_results.json"), "w") as f:
     json.dump(all_results, f, indent=4)
-
-# with open(os.path.join(res_saving_path, f"{generate_method}_{W_GT_Evidence}_answer_results.json"), "w") as f:
-#     json.dump(answer_results, f, indent=4)
-# with open(os.path.join(res_saving_path, f"{generate_method}_{W_GT_Evidence}_evidence_results.json"), "w") as f:
-#     json.dump(evidence_results, f, indent=4)
-# with open(os.path.join(res_saving_path, f"{generate_method}_{W_GT_Evidence}_reward_results.json"), "w") as f:
-#     json.dump(reward_results, f, indent=4)
