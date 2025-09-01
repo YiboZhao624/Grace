@@ -7,8 +7,8 @@ import re
 import copy
 import string
 from tqdm import tqdm
-from custom_reward_v2 import reward_function
-from utils import setup_logging
+from custom_reward_v2 import val_reward_function
+from utils import setup_logging, extract_evidence_or_none, extract_answer_or_all
 
 logger = setup_logging("Evaluator")
 
@@ -199,9 +199,9 @@ class Evaluator:
         LLM_Judge_prompt += '\n\n\n\n*************Please check if the model\'s answer is correct. As long as the model\'s answer hits any item (or synonym) in the correct answer list, it can be considered correct. You only need to answer "yes" or "no".*************'
         return 1 if self.gpt.generate(LLM_Judge_prompt).lower() == "yes" else 0
 
-    def _RR(self, full_answer: str, ground_truth_answers: List[str], ground_truth_evidences: List[str]) -> dict:
+    def _RR(self, full_answer: str, ground_truth_answers: List[str], ground_truth_evidences: List[str], gt_evidence_retrieved: bool) -> dict:
         # reward_function(data, gt_evidences, gt_answers)
-        return reward_function(full_answer, ground_truth_evidences, ground_truth_answers)
+        return val_reward_function(full_answer, ground_truth_evidences, ground_truth_answers, gt_evidence_retrieved)
 
     def _clean(self, candidate_gts: Union[List[str], List[List[str]]], answers: List[str]) -> List[str]:
         assert len(candidate_gts) == len(answers), "make sure the number of candidate answers and answers are the same"
@@ -264,7 +264,24 @@ class Evaluator:
         
         logger.info(f"{'='*20} End of Demonstrator for {metric_name} {'='*20}\n")
 
-    def evaluate(self,full_answer: List[str], chosen_evidences:List[str], answers: List[str], ground_truths: List[List[str]], ground_truth_evidences: List[List[str]], num_examples: int = 3) -> dict:
+    def _evaluate_group(self, entries: List[dict], group_name: str, num_examples: int = 3):
+        """evaluate the entries in a group"""
+        if not entries:
+            return {}, {}, {}
+
+        # 1. extract the data needed for evaluation from the entry list
+        full_answers = [e["answer"] for e in entries]
+        chosen_evidences = [extract_evidence_or_none(e["answer"]) for e in entries]
+        answers = [extract_answer_or_all(e["answer"]) for e in entries]
+        
+        ground_truths = []
+        ground_truth_evidences = []
+
+        for e in entries:
+            gt_data = e["reward_model"]["ground_truth"]
+            ground_truths.append(gt_data["answer"])
+            ground_truth_evidences.append(gt_data.get("gt_evidence", [""]))
+        
         if len(answers) != len(ground_truths):
             raise ValueError("The number of answers and ground_truths must be the same.")
         logger.info(f"evaluating the answers and ground_truths with {self.metrics} metrics")
@@ -379,7 +396,7 @@ class Evaluator:
                 # due to the evidence is directly copied, it is unnecessary to judge the evidence.
                 # evidence_results[i]["LLM-as-a-Judge"] = self._LLM_Judge(chosen_evidences[i], ground_truth_evidences[i])
             if "RR" in self.metrics:
-                result_RR = self._RR(full_answer[i], ground_truths[i], ground_truth_evidences[i])
+                result_RR = self._RR(full_answers[i], ground_truths[i], ground_truth_evidences[i], group_name=="gt_retrieved_success")
                 for key, value in result_RR.items():
                     reward_results[key] = reward_results.get(key, []) + [value]
 
@@ -390,7 +407,7 @@ class Evaluator:
                 self._demonstrate(
                     metric_name=metric_name,
                     scores=scores,
-                    full_answers=full_answer,
+                    full_answers=full_answers,
                     chosen_evidences=chosen_evidences,
                     answers=answers,
                     ground_truths=ground_truths,
@@ -402,6 +419,43 @@ class Evaluator:
                 continue
 
         return answer_results, evidence_results, reward_results
+
+
+    def evaluate(self, entries: List[dict]) -> dict:
+        logger.info(f"start evaluating {len(entries)} samples...")
+        
+        # 1. group the entries by the gt_evidence_retrieved flag
+        groups = {
+            "gt_retrieved_success": [],
+            "gt_retrieved_fail": [],
+        }
+        for entry in entries:
+            gt_info = entry.get("reward_model", {}).get("ground_truth", {})
+            retrieved_flag = gt_info.get("gt_evidence_retrieved") # maybe True, False for test and eval data.
+
+            if retrieved_flag is True:
+                groups["gt_retrieved_success"].append(entry)
+            elif retrieved_flag is False:
+                groups["gt_retrieved_fail"].append(entry)
+            else:
+                logger.error(f"the gt_evidence_retrieved flag is {retrieved_flag}. It looks like you are evaluating the training data. Please check your file path.")
+                raise
+        
+        # 2. evaluate the entries in each group
+        all_results = {}
+        for group_name, group_entries in groups.items():
+            if group_entries:
+                logger.info(f"evaluating the group: '{group_name}' ({len(group_entries)} samples)")
+                answer_res, evidence_res, reward_res = self._evaluate_group(group_entries, group_name)
+                all_results[group_name] = {
+                    "count": len(group_entries),
+                    "answer_results": answer_res,
+                    "evidence_results": evidence_res,
+                    "reward_results": reward_res
+                }
+
+        return all_results
+
 
 if __name__ == '__main__':
     # Mock API for LLM-as-a-Judge for demonstration purposes
