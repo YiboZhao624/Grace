@@ -9,66 +9,31 @@ from evaluator import Evaluator
 import json, os
 from tqdm import tqdm
 from configs import LLMConfig, InferenceConfigs
+from utils import resolve_file_name, ResolvedFilePath
+from argparse import ArgumentParser
+
+parser = ArgumentParser()
+parser.add_argument("--path", type=str, nargs="+")
+parser.add_argument("--llm_name", type=str)
+parser.add_argument("--url", type=str)
+args = parser.parse_args()
+
+paths = args.path
+llm_name = args.llm_name
+url = args.url
 
 logger = setup_logging("Inference")
 os.environ['TRANSFORMERS_CACHE'] = "/root/.cache/huggingface/hub/"
 
-@dataclass
-class ResolvedFilePath:
-    dataset: str
-    split: str
-    method: str
-    chunk_size: str
-    retriever: str
-    reranker: str
-    top_k: str
-    wogt_rate: str
 
-def resolve_file_name(file_name: str) -> ResolvedFilePath:
-    file_name_list = file_name.split("/")[-1].split("-")
-    resolved_file_name = ResolvedFilePath(
-        dataset = file_name_list[0],
-        split = file_name_list[1],
-        method = file_name_list[2],
-        chunk_size = file_name_list[3],
-        retriever = file_name_list[4],
-        reranker = file_name_list[5],
-        top_k = file_name_list[6],
-        wogt_rate = file_name_list[7]
-    )
-    return resolved_file_name
-
-
-# "/root/shared_planing/LLM_model/Qwen3-4B-Instruct-2507"
 
 custom_InferenceConfigs = InferenceConfigs(
     llm_config = LLMConfig(
-        model_name = "830_ckpt140",
-        url = "http://localhost:8003"
+        model_name = llm_name,
+        url = url
     ),
-    data_path = [
-        "data/processed/0829-0.4/QASPER-test-retriever_reranker-512cs-vllm_Qwen3-0.6B-vllm_-top3-wogt04.parquet",
-        # "data/processed/0829-0.4/QASPER-test-retriever-512cs-bm25-None-top3-wogt04.parquet",
-        "data/processed/0829-0.4/QASPER-test-retriever-512cs-random-None-top3-wogt04.parquet",
-        "data/processed/0829-0.4/QASPER-test-retriever-512cs-vllm_Qwen3-0.6B-None-top3-wogt04.parquet",
-        "data/processed/0829-0.4/QASPER-test-oracle-512cs-None-None-top3-wogt04.parquet"
-    ]
+    data_path = paths
 )
-        # "data/processed/0815-256cs-greedy-sent/QASPER_Split-test_Prompt-default_NumberTemplate-False_retriever_bm25_TopK-7_WO_GT_Evidence_Rate-0.2.parquet",
-        # "data/processed/0815-256cs-greedy-sent/QASPER_Split-test_Prompt-default_NumberTemplate-False_retriever_reranker_vllm-Qwen3-Embedding-0.6B_TopK-7_WO_GT_Evidence_Rate-0.2.parquet",
-        # "data/processed/0815-256cs-greedy-sent/QASPER_Split-test_Prompt-default_NumberTemplate-False_retriever_vllm-Qwen3-Embedding-0.6B_TopK-7_WO_GT_Evidence_Rate-0.2.parquet",
-        # "data/processed/0815-512cs-greedy-sent/QASPER_Split-test_Prompt-default_NumberTemplate-False_retriever_bm25_TopK-7_WO_GT_Evidence_Rate-0.2.parquet",
-        # "data/processed/0815-512cs-greedy-sent/QASPER_Split-test_Prompt-default_NumberTemplate-False_retriever_reranker_vllm-Qwen3-Embedding-0.6B_TopK-7_WO_GT_Evidence_Rate-0.2.parquet",
-        # "data/processed/0815-512cs-greedy-sent/QASPER_Split-test_Prompt-default_NumberTemplate-False_retriever_vllm-Qwen3-Embedding-0.6B_TopK-7_WO_GT_Evidence_Rate-0.2.parquet"
-# "data/processed/0806-256cs/QASPER_Split-test_Prompt-default_NumberTemplate-False_retriever_vllm-Qwen3-Embedding-0.6B_TopK-7_WO_GT_Evidence_Rate-0.2.parquet",
-# "data/processed/0806-512cs/QASPER_Split-test_Prompt-default_NumberTemplate-False_retriever_bm25_TopK-7_WO_GT_Evidence_Rate-0.2.parquet",
-# "data/processed/0806-512cs/QASPER_Split-test_Prompt-default_NumberTemplate-False_retriever_reranker_vllm-Qwen3-Embedding-0.6B_TopK-7_WO_GT_Evidence_Rate-0.2.parquet",
-# "data/processed/0806-512cs/QASPER_Split-test_Prompt-default_NumberTemplate-False_retriever_vllm-Qwen3-Embedding-0.6B_TopK-7_WO_GT_Evidence_Rate-0.2.parquet"
-# "data/processed/0806-256cs/QASPER_Split-test_Prompt-default_NumberTemplate-False_retriever_bm25_TopK-7_WO_GT_Evidence_Rate-0.2.parquet",
-# data/processed/0806-256cs/QASPER_Split-test_Prompt-default_NumberTemplate-False_retriever_reranker_vllm-Qwen3-Embedding-0.6B_TopK-7_WO_GT_Evidence_Rate-0.2.parquet",
-# "data/processed/0806-256cs/QASPER_Split-test_Prompt-default_NumberTemplate-False_retriever_vllm-Qwen3-Embedding-0.6B_TopK-7_WO_GT_Evidence_Rate-0.2.parquet"
-
-# Qwen3-4B-Instruct-2507
 
 custom_llm = vLLM(custom_InferenceConfigs.llm_config)
 
