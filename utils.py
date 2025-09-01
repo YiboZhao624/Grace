@@ -107,7 +107,24 @@ def safe_len(x):
         return 1  # None 表示单配置，等价于长度1
     return len(x)
 
+def organize_evaluation_results(all_results: Dict[str, Dict[str, Dict[str, List[float]]]]) -> dict:
+    organized_results = {}
+    for group_name, group_results in all_results.items():
+        organized_results[group_name] = {
+            "count": group_results["count"],
+            }
+        for metrics_type, value in group_results.items():
+            if metrics_type != "count":
+                organized_results[group_name][metrics_type] = {}
+                for metric, metric_results in value.items():
+                    if metric != "choice":
+                        organized_results[group_name][metrics_type][metric] = sum(metric_results) / len(metric_results)
+                    else:
+                        evidence_rate = [metric_result == "<evidence>" for metric_result in metric_results].count(True) / len(metric_results)
+                        organized_results[group_name][metrics_type]["choice"] = evidence_rate
 
+    return organized_results
+    
 if __name__ == "__main__":
     b = [4, 17, 52, 6]
     a = [3,4,17,73,5,8,10,6]
