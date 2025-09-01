@@ -14,12 +14,12 @@ logger = setup_logging("Retriever_Evaluation")
 
 RETRIEVER_CONFIGS_TO_TEST = [
     RetrieverConfig(retriever_type="bm25", k1=1.5, b=0.75),
-    RetrieverConfig(
-        retriever_type="vllm",
-        model_name="/root/shared_planing/LLM_model/Qwen3-Embedding-0.6B",
-        base_url="http://localhost:8001"
-    ),
-    RetrieverConfig(retriever_type="random"),
+    # RetrieverConfig(
+    #     retriever_type="vllm",
+    #     model_name="/root/shared_planing/LLM_model/Qwen3-Embedding-0.6B",
+    #     base_url="http://localhost:8001"
+    # ),
+    # RetrieverConfig(retriever_type="random"),
 ]
 
 # --- 在这里配置您的分块器 ---
@@ -27,12 +27,12 @@ RETRIEVER_CONFIGS_TO_TEST = [
 CHUNKER_CONFIG = ChunkerConfig(
     chunking_strategy="token",
     model_name="/root/shared_planing/LLM_model/Qwen3-Embedding-0.6B",
-    max_length=256,
+    max_length=512,
     overlap=64,
 )
 
 DATA_FOLDER = "./data/qasper"
-SPLIT_TO_EVALUATE = "test"
+SPLIT_TO_EVALUATE = "val"
 RECALL_N_VALUES = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
 
 
@@ -82,7 +82,7 @@ def evaluate_retriever_performance():
     main evaluation function, for loading data, iterating over the retriever, calculating Recall@N and calling the plotting function.
     """
     chunker = get_chunker(CHUNKER_CONFIG)
-
+    tot_chunk_count = 0
     logger.info("Loading and pre-processing QASPER data...")
     from configs import DataGeneratorConfigs
     temp_configs = DataGeneratorConfigs(data_folder=DATA_FOLDER, split=[SPLIT_TO_EVALUATE], method="retriever")
@@ -123,6 +123,7 @@ def evaluate_retriever_performance():
             
             retriever.reset()
             retriever.index(chunks)
+            tot_chunk_count += len(chunks)
             max_n = max(RECALL_N_VALUES)
             _, retriever_res = retriever.retrieve(question, max_n)
             retrieved_ids = [idx for idx, _ in retriever_res]
@@ -131,11 +132,11 @@ def evaluate_retriever_performance():
                 top_n_retrieved = retrieved_ids[:n]
                 if calculate_recall(top_n_retrieved, gt_evidence_ids):
                     hits_at_n[n] += 1
-        
+        logger.info(f"Average chunk count: {tot_chunk_count / total_questions}")
         recall_at_n_scores = {f"Recall@{n}": hits_at_n[n] / total_questions if total_questions > 0 else 0 
                               for n in RECALL_N_VALUES}
         all_results[retriever_name] = recall_at_n_scores
-    
+        
 
     logger.info("\n\n===== Final Retriever Performance Results =====")
     print(json.dumps(all_results, indent=4))
