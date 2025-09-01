@@ -5,6 +5,33 @@ import pandas as pd
 import logging
 import re
 import sys
+from dataclasses import dataclass
+
+@dataclass
+class ResolvedFilePath:
+    dataset: str
+    split: str
+    method: str
+    chunk_size: str
+    retriever: str
+    reranker: str
+    top_k: str
+    wogt_rate: str
+
+def resolve_file_name(file_name: str) -> ResolvedFilePath:
+    file_name_list = file_name.split("/")[-1].split("-")
+    resolved_file_name = ResolvedFilePath(
+        dataset = file_name_list[0],
+        split = file_name_list[1],
+        method = file_name_list[2],
+        chunk_size = file_name_list[3],
+        retriever = file_name_list[4],
+        reranker = file_name_list[5],
+        top_k = file_name_list[6],
+        wogt_rate = file_name_list[7]
+    )
+    return resolved_file_name
+
 
 def extract_evidence_or_none(text:str):
     # if the text contains <evidence>...</evidence> tag, return the evidence.
@@ -124,7 +151,7 @@ def organize_evaluation_results(all_results: Dict[str, Dict[str, Dict[str, List[
                         organized_results[group_name][metrics_type]["choice"] = evidence_rate
 
     return organized_results
-    
+
 if __name__ == "__main__":
     b = [4, 17, 52, 6]
     a = [3,4,17,73,5,8,10,6]
