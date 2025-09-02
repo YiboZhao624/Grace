@@ -9,7 +9,7 @@ from evaluator import Evaluator
 import json, os
 from tqdm import tqdm
 from configs import LLMConfig, InferenceConfigs
-from utils import resolve_file_name, ResolvedFilePath
+from utils import resolve_file_name, ResolvedFilePath, organize_evaluation_results
 from argparse import ArgumentParser
 
 parser = ArgumentParser()
@@ -24,8 +24,6 @@ url = args.url
 
 logger = setup_logging("Inference")
 os.environ['TRANSFORMERS_CACHE'] = "/root/.cache/huggingface/hub/"
-
-
 
 custom_InferenceConfigs = InferenceConfigs(
     llm_config = LLMConfig(
@@ -75,45 +73,8 @@ if __name__ == "__main__":
         save_parquet(data, saving_path)
 
         logger.info(f"inference done, the data is saved to {saving_path}")
-        logger.info(f"the first data is: {data[0]}")
 
         os.makedirs(res_saving_path, exist_ok=True)
-
-        full_answers = [item["answer"] for item in data]
-        chosen_evidences = [extract_evidence_or_none(item["answer"]) for item in data]
-        answers = [extract_answer_or_all(item["answer"]) for item in data]
-
-        references = [item["extra_info"]["references"] for item in data]
-        # reference is a list of gt_answers, for a single question.
-        ground_truths = []
-        ground_truth_evidences = []
-        unanswerable_index = []
-        for i, reference in enumerate(references):
-            answer_list = []
-            evidence_list = []
-            for gt_answer in reference:
-                answer_list.append(gt_answer["answer"])
-                evidence_list.extend(gt_answer["evidence"])
-            
-            if len(evidence_list) == 0:
-                if reference[0]["answer"] == "Unanswerable":
-                    # logger.warning(f"No evidence found for reference: {reference} at index {i}")
-                    unanswerable_index.append(i)
-                    evidence_list = [""]
-
-            ground_truths.append(answer_list)
-            ground_truth_evidences.append(evidence_list)
-
-        unanswerable_index = list(set(unanswerable_index))
-        logger.info(f"the length of unanswerable_index is: {len(unanswerable_index)}")
-        # logger.info(f"the unanswerable_index is: {unanswerable_index}")
-
-        logger.info(f"the length of full_answers is: {len(full_answers)}")
-        logger.info(f"the length of chosen_evidences is: {len(chosen_evidences)}")
-        logger.info(f"the length of answers is: {len(answers)}")
-        logger.info(f"the length of ground_truths is: {len(ground_truths)}")
-        logger.info(f"the length of ground_truth_evidences is: {len(ground_truth_evidences)}")
-
 
         logger.info("Initializing the evaluator...")
         enabled_metrics = ["BS","EM","RL","BL","RR"]
@@ -124,25 +85,8 @@ if __name__ == "__main__":
         evaluator = Evaluator(metrics=enabled_metrics, **kwargs)
         logger.info("Evaluator initialized.")
 
+        all_results = evaluator.evaluate(data)
+        organized_results = organize_evaluation_results(all_results)
 
-        answer_results, evidence_results, reward_results = evaluator.evaluate(full_answers, chosen_evidences, answers, ground_truths, ground_truth_evidences)
-
-        # aggregate the results in each dict.
-        for key, value in answer_results.items():
-            answer_results[key] = sum(value) / len(value)
-        for key, value in evidence_results.items():
-            evidence_results[key] = sum(value) / len(value)
-        for key, value in reward_results.items():
-            try:
-                reward_results[key] = sum(value) / len(value)
-            except Exception as e:
-                logger.error(f"Error aggregating {key}: {e}")
-                reward_results[key] = 0
-
-        all_results = {
-            "answer_results": answer_results,
-            "evidence_results": evidence_results,
-            "reward_results": reward_results,
-        }
-        with open(os.path.join(res_saving_path, f"{generate_method}_{retriever}_{reranker}_{top_k}_{wogt_rate}_all_results.json"), "w") as f:
-            json.dump(all_results, f, indent=4)
+        with open(os.path.join(res_saving_path, f"{generate_method}_{wogt_rate}_{retriever}_{reranker}_{top_k}_{data_chunk_size}_all_results.json"), "w") as f:
+            json.dump(organized_results, f, indent=4)
