@@ -108,7 +108,7 @@ def reward_function(data,gt_evidences:List[str], gt_answers:List[str])->dict:
     score is the total reward, and the reward_extra_info is a dictionary with key of choice_r, format_r, evidence_r, answer_r.
     '''
     total_reward = 0
-    text = data
+    text = data.split("</think>")[-1].strip()
     format_r = format_reward(text)
     total_reward += format_r
 
@@ -123,8 +123,8 @@ def reward_function(data,gt_evidences:List[str], gt_answers:List[str])->dict:
     evidence_text = text.split("</evidence>")[0][len("<evidence>"):]
 
     if choice == "<evidence>":
-        answer_r = max(answer_r, rouge_l_reward(answer_text, gt_answers, reward_multiplier=5.0))
-        evidence_r = max(evidence_r, rouge_l_reward(evidence_text, gt_evidences, reward_multiplier=5.0))
+        answer_r = max(answer_r, rouge_l_reward(answer_text, gt_answers, reward_multiplier=3.0))
+        evidence_r = max(evidence_r, rouge_l_reward(evidence_text, gt_evidences, reward_multiplier=2.0))
         total_reward += evidence_r
         total_reward += answer_r
         answer_length_punish = length_penalty(answer_text, gt_answers)
@@ -140,7 +140,7 @@ def reward_function(data,gt_evidences:List[str], gt_answers:List[str])->dict:
 
 def val_reward_function(data,gt_evidences:List[str], gt_answers:List[str], gt_evidence_retrieved:bool)->dict:
     total_reward = 0
-    text = data
+    text = data.split("</think>")[-1].strip()
     format_r = format_reward(text)
     total_reward += format_r
 
