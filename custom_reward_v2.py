@@ -81,7 +81,7 @@ def choice_reward(data:str, gt_evidence):
     if choice == gt_choice and choice == "<evidence>":
         return 1, choice
     elif choice == gt_choice and choice == "<llm>":
-        return 5, choice
+        return 3, choice
     else:
         return 0, choice
 
@@ -115,7 +115,7 @@ def reward_function(data,gt_evidences:List[str], gt_answers:List[str])->dict:
     choice_r, choice = choice_reward(text, gt_evidences)
     choice_report = 1 if choice == "<llm>" else 0
     if choice_r == 0:
-        return {"score": total_reward, "choice": choice_report, "choice_r": choice_r, "evidence": 0, "answer": 0, "format": format_r}
+        return {"score": total_reward, "choice": choice_report, "choice_r": choice_r, "evidence": 0, "answer": 0, "format": format_r, "alp":0, "elp":0}
     total_reward += choice_r
     answer_r = 0
     evidence_r = 0
@@ -124,7 +124,7 @@ def reward_function(data,gt_evidences:List[str], gt_answers:List[str])->dict:
 
     if choice == "<evidence>":
         answer_r = max(answer_r, rouge_l_reward(answer_text, gt_answers, reward_multiplier=5.0))
-        evidence_r = max(evidence_r, rouge_l_reward(evidence_text, gt_evidences, reward_multiplier=4.0))
+        evidence_r = max(evidence_r, rouge_l_reward(evidence_text, gt_evidences, reward_multiplier=5.0))
         total_reward += evidence_r
         total_reward += answer_r
         answer_length_punish = length_penalty(answer_text, gt_answers)
@@ -154,8 +154,9 @@ def val_reward_function(data,gt_evidences:List[str], gt_answers:List[str], gt_ev
     answer_text = text.split("</answer>")[0][len("<answer>"):]
     evidence_text = text.split("</evidence>")[0][len("<evidence>"):]
     if choice == "<evidence>":
+        choice = 0
         answer_r = max(answer_r, rouge_l_reward(answer_text, gt_answers, reward_multiplier=5.0))
-        evidence_r = max(evidence_r, rouge_l_reward(evidence_text, gt_evidences, reward_multiplier=4.0))
+        evidence_r = max(evidence_r, rouge_l_reward(evidence_text, gt_evidences, reward_multiplier=5.0))
         total_reward += evidence_r
         total_reward += answer_r
         alp = length_penalty(answer_text, gt_answers)
@@ -164,6 +165,7 @@ def val_reward_function(data,gt_evidences:List[str], gt_answers:List[str], gt_ev
         total_reward += elp
         return {"score": total_reward, "choice": choice, "choice_r": choice_r, "evidence": evidence_r, "answer": answer_r, "format": format_r, "alp": alp, "elp": elp}
     elif choice == "<llm>":
+        choice = 1
         total_reward += answer_r
         return {"score": total_reward, "choice": choice, "choice_r": choice_r, "evidence": evidence_r, "answer": answer_r, "format": format_r, "alp": 0, "elp": 0}
     else:
