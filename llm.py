@@ -10,6 +10,7 @@ from configs import LLMConfig
 import requests
 import os
 import openai
+from openai import OpenAI
 from utils import setup_logging
 from typing import Union
 
@@ -67,15 +68,26 @@ class GPT(LLM):
         self.base_url = config.url
         openai.api_key = os.environ["OPENAI_API_KEY"]
         self.model_name = config.model_name
+        self.client = OpenAI(base_url=config.url)
 
-    def generate(self, prompt:str) -> str:
-        response = openai.ChatCompletion.create(
+    def generate(self, prompt:str, **kwargs) -> str:
+        response = self.client.chat.completions.create(
             model=self.model_name,
             messages=[
                 {"role": "system", "content": "You are a helpful assistant."},
                 {"role": "user", "content": prompt}
             ],
-            temperature=0.7,
-            max_tokens=512
+            temperature=kwargs.get("temperature", 0), # serving as LLM as the judge
+            max_tokens=kwargs.get("max_tokens", 10), # serving as LLM as the judge
+            stream=False
         )
         return response.choices[0].message.content
+
+if __name__ == "__main__":
+    # you can change the LLMConfig to test your api.
+    config = LLMConfig(
+        url="https://api.deepseek.com",
+        model_name="deepseek-chat",
+    )
+    gpt = GPT(config)
+    print(gpt.generate("What is the capital of France?", temperature=0, max_tokens=10))
