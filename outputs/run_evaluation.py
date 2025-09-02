@@ -11,7 +11,8 @@ from tqdm import tqdm
 from argparse import ArgumentParser
 from typing import List, Dict
 from utils import organize_evaluation_results, setup_logging, resolve_file_name, ResolvedFilePath
-
+from llm import GPT
+from configs import LLMConfig
 
 parser = ArgumentParser()
 parser.add_argument("--path", type=str)
@@ -45,6 +46,10 @@ kwargs = {
     "BERT_path": "bert-base-uncased",
     "device": "cuda:0"
 }
+if "LJ" in enabled_metrics:
+    custom_llm_config = LLMConfig(model_name="deepseek-chat", url="https://api.deepseek.com")
+    custom_llm = GPT(custom_llm_config)
+    kwargs["LJ_api"] = custom_llm
 evaluator = Evaluator(metrics=enabled_metrics, **kwargs)
 logger.info("Evaluator initialized.")
 

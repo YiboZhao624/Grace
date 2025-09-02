@@ -2,7 +2,7 @@
 # to make the data generation more aligned, we use the same parquet file for inference.
 
 from dataclasses import dataclass
-from llm import vLLM
+from llm import vLLM, GPT
 from utils import read_parquet, save_parquet, setup_logging, extract_answer_or_all, extract_evidence_or_none
 from typing import List, Dict, Literal
 from evaluator import Evaluator
@@ -82,6 +82,11 @@ if __name__ == "__main__":
             "BERT_path": "bert-base-uncased",
             "device": "cuda:0"
         }
+        if "LJ" in enabled_metrics:
+            custom_llm_config = LLMConfig(model_name="deepseek-chat", url="https://api.deepseek.com")
+            custom_llm = GPT(custom_llm_config)
+            kwargs["LJ_api"] = custom_llm
+
         evaluator = Evaluator(metrics=enabled_metrics, **kwargs)
         logger.info("Evaluator initialized.")
 
