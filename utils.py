@@ -147,8 +147,8 @@ def organize_evaluation_results(all_results: Dict[str, Dict[str, Dict[str, List[
                     if metric != "choice":
                         organized_results[group_name][metrics_type][metric] = sum(metric_results) / len(metric_results)
                     else:
-                        evidence_rate = [metric_result == "<evidence>" for metric_result in metric_results].count(True) / len(metric_results)
-                        organized_results[group_name][metrics_type]["choice"] = evidence_rate
+                        llm_rate = [metric_result == 1 for metric_result in metric_results].count(True) / len(metric_results)
+                        organized_results[group_name][metrics_type]["choice"] = llm_rate
 
     return organized_results
 
