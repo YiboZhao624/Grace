@@ -70,17 +70,26 @@ class GPT(LLM):
         self.model_name = config.model_name
         self.client = OpenAI(base_url=config.url)
 
-    def generate(self, prompt:str, **kwargs) -> str:
+    def generate(self, user_input:Union[dict, str], sys_prompt:Union[dict, str] = None, **kwargs) -> str:
+        messages = []
+        if isinstance(sys_prompt, dict):
+            messages.append(sys_prompt)
+        elif isinstance(sys_prompt, str):
+            messages.append({"role": "system", "content": sys_prompt})
+        if isinstance(user_input, dict):
+            messages.append(user_input)
+        elif isinstance(user_input, str):
+            messages.append({"role": "user", "content": user_input})
+        else:
+            raise ValueError(f"Invalid user input type: {type(user_input)}")
         response = self.client.chat.completions.create(
             model=self.model_name,
-            messages=[
-                {"role": "system", "content": "You are a helpful assistant."},
-                {"role": "user", "content": prompt}
-            ],
-            temperature=kwargs.get("temperature", 0), # serving as LLM as the judge
-            max_tokens=kwargs.get("max_tokens", 10), # serving as LLM as the judge
+            messages=messages,
+            temperature=kwargs.get("temperature", 0.8), # serving as LLM as the judge
+            max_tokens=kwargs.get("max_tokens", 1024), # serving as LLM as the judge
             stream=False
         )
+        # logger.info(f"Response tokens: {response.usage.completion_tokens}\nPrompt tokens: {response.usage.prompt_tokens}")
         return response.choices[0].message.content
 
 if __name__ == "__main__":
