@@ -264,7 +264,7 @@ class Evaluator:
         
         logger.info(f"{'='*20} End of Demonstrator for {metric_name} {'='*20}\n")
 
-    def _evaluate_group(self, entries: List[dict], group_name: str, num_examples: int = 3):
+    def _evaluate_group(self, entries: List[dict], group_name: str, num_examples: int = 0):
         """evaluate the entries in a group"""
         if not entries:
             return {}, {}, {}
@@ -421,7 +421,7 @@ class Evaluator:
         return answer_results, evidence_results, reward_results
 
 
-    def evaluate(self, entries: List[dict]) -> dict:
+    def evaluate(self, entries: List[dict], num_examples: int = 0) -> dict:
         logger.info(f"start evaluating {len(entries)} samples...")
         
         # 1. group the entries by the gt_evidence_retrieved flag
@@ -444,9 +444,9 @@ class Evaluator:
         # 2. evaluate the entries in each group
         all_results = {}
         for group_name, group_entries in groups.items():
-            if group_entries:
+            if group_entries and num_examples > 0:
                 logger.info(f"evaluating the group: '{group_name}' ({len(group_entries)} samples)")
-                answer_res, evidence_res, reward_res = self._evaluate_group(group_entries, group_name)
+                answer_res, evidence_res, reward_res = self._evaluate_group(group_entries, group_name, num_examples)
                 all_results[group_name] = {
                     "count": len(group_entries),
                     "answer_results": answer_res,
