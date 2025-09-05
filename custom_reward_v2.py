@@ -156,6 +156,7 @@ def val_reward_function(data,gt_evidences:List[str], gt_answers:List[str], gt_ev
     else:
         choice_r, choice = choice_reward(text, [""])
     if choice_r == 0:
+        choice = 0 if choice == "<evidence>" else 1
         return {"score": total_reward, "choice": choice, "choice_r": choice_r, "evidence": 0, "answer": 0, "format": format_r, "alp":0, "elp":0}
     total_reward += choice_r
     answer_r = 0
