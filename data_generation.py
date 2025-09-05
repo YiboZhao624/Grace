@@ -263,7 +263,7 @@ class QASPERDataGenerator:
         raise NotImplementedError("You can't directly use the meta class. Subclasses must implement this method")
 
     def manage_chunk_text_list_to_text(self, chunk_text_list: List[str]) -> str:
-        if self.config.number_template:
+        if not self.config.number_template:
             evidence_input = "\n\n".join(chunk_text_list)
         else:
             evidence_input = "\n\n".join(f"{i+1}.{s}" for i, s in enumerate(chunk_text_list))
