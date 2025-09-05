@@ -128,9 +128,6 @@ class InferenceConfigs:
     llm_config: LLMConfig = field(default_factory=lambda: LLMConfig())
     # Dataset for inference.
     data_path: List[str] = field(default_factory=lambda: ["./data/processed/QASPER-3-methods-1000-samples-0805.parquet"])
-    # see prompts.py for more details.
-    prompt_template: str = "default"
-    number_template: bool = False
     # For evaluation.
     metrics: List[str] = field(default_factory=lambda: ["RL", "BL", "EM", "BS", "LJ", "RR"])
     # For LJ, we need to provide the LLM API.
