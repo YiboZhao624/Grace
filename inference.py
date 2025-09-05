@@ -33,7 +33,10 @@ custom_InferenceConfigs = InferenceConfigs(
     data_path = paths
 )
 
-custom_llm = vLLM(custom_InferenceConfigs.llm_config)
+if url.startswith("http://localhost"):
+    custom_llm = vLLM(custom_InferenceConfigs.llm_config)
+else:
+    custom_llm = GPT(custom_InferenceConfigs.llm_config)
 
 def inference(data: List[Dict], resume: int = 0):
     for i, item in enumerate(tqdm(data[resume:], desc="Inference")):
