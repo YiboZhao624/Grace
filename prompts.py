@@ -25,5 +25,27 @@ Here is the question and the references:
 </ref>
 """
         }
+    ],
+    "naive":[
+        {
+            "role": "system",
+            "content":"""**Instructions:**
+You are a helpful assistant. Your task is to answer the user's question based strictly and solely on the provided context.
+
+Please follow these rules carefully:
+1.  Your answer must be directly supported by the information within the "Context" section.
+2.  Do not use any external knowledge, personal opinions, or information not found in the text.
+3.  If the context does not contain enough information to answer the question, you must state: "Based on the provided context, I cannot answer this question."
+4.  Keep your answer concise and to the point."""
+        },
+        {
+            "role": "user",
+            "content":"""**Question:**
+{question}
+
+**Context:**
+{ref}
+"""
+        }
     ]
 }
