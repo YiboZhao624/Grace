@@ -19,7 +19,7 @@ class ResolvedFilePath:
     wogt_rate: str
 
 def resolve_file_name(file_name: str) -> ResolvedFilePath:
-    file_name_list = file_name.split("/")[-1].split("-")
+    file_name_list = file_name.split("/")[-1].replace(".parquet", "").split("-")
     resolved_file_name = ResolvedFilePath(
         dataset = file_name_list[0],
         split = file_name_list[1],
