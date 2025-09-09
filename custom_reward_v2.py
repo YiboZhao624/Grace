@@ -83,7 +83,7 @@ def choice_reward(data:str, gt_evidence):
     if choice == gt_choice and choice == "<evidence>":
         return 1, choice
     elif choice == gt_choice and choice == "<llm>":
-        return 3, choice
+        return 4, choice
     else:
         return 0, choice
 
