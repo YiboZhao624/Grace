@@ -264,7 +264,7 @@ class Evaluator:
         
         logger.info(f"{'='*20} End of Demonstrator for {metric_name} {'='*20}\n")
 
-    def _evaluate_group(self, entries: List[dict], group_name: str, num_examples: int = 0):
+    def _evaluate_group(self, entries: List[dict], group_name: str, num_examples: int = 3):
         """evaluate the entries in a group"""
         if not entries:
             return {}, {}, {}
@@ -400,23 +400,24 @@ class Evaluator:
                 for key, value in result_RR.items():
                     reward_results[key] = reward_results.get(key, []) + [value]
 
-        logger.info("Demonstrating Top/Bottom 5 entries for each metric...")
-        all_results_for_demo = {**answer_results, **evidence_results, **reward_results}
-        for metric_name, scores in all_results_for_demo.items():
-            try:
-                self._demonstrate(
-                    metric_name=metric_name,
-                    scores=scores,
-                    full_answers=full_answers,
-                    chosen_evidences=chosen_evidences,
-                    answers=answers,
-                    ground_truths=ground_truths,
-                    ground_truth_evidences=ground_truth_evidences,
-                    num_examples=num_examples
-                )
-            except Exception as e:
-                logger.error(f"Error demonstrating {metric_name}: {e}")
-                continue
+        if num_examples > 0:
+            logger.info(f"Demonstrating Top/Bottom {num_examples} entries for each metric...")
+            all_results_for_demo = {**answer_results, **evidence_results, **reward_results}
+            for metric_name, scores in all_results_for_demo.items():
+                try:
+                    self._demonstrate(
+                        metric_name=metric_name,
+                        scores=scores,
+                        full_answers=full_answers,
+                        chosen_evidences=chosen_evidences,
+                        answers=answers,
+                        ground_truths=ground_truths,
+                        ground_truth_evidences=ground_truth_evidences,
+                        num_examples=num_examples
+                    )
+                except Exception as e:
+                    logger.error(f"Error demonstrating {metric_name}: {e}")
+                    continue
 
         return answer_results, evidence_results, reward_results
 
@@ -444,7 +445,7 @@ class Evaluator:
         # 2. evaluate the entries in each group
         all_results = {}
         for group_name, group_entries in groups.items():
-            if group_entries and num_examples > 0:
+            if group_entries:
                 logger.info(f"evaluating the group: '{group_name}' ({len(group_entries)} samples)")
                 answer_res, evidence_res, reward_res = self._evaluate_group(group_entries, group_name, num_examples)
                 all_results[group_name] = {
