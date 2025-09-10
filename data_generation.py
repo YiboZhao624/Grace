@@ -62,7 +62,7 @@ from prompts import Prompt_templates
 from configs import DataGeneratorConfigs, PreprocessConfig, RetrieverConfig, ChunkerConfig, RerankerConfig, DataGeneratorConfig
 from copy import deepcopy
 
-random.seed(42)
+# random.seed(42)
 
 
 def find_evidence_chunks(evidence_texts: List[str], chunks: List[str], threshold: float = 0.8) -> List[int]:
