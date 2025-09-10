@@ -12,12 +12,10 @@
 
 import yaml
 import os
-from preprocess import preprocess_QASPER
+import random
 from argparse import ArgumentParser
-from retriever import get_retriever
-from chunker import get_chunker
-from configs import PreprocessConfig, RetrieverConfig, ChunkerConfig, DataGeneratorConfigs, RerankerConfig
-from data_generation import QASPERDataGenerator, QASPERRetrieverDataGenerator, QASPEROracleDataGenerator, QASPERRetrieverRerankerDataGenerator, get_data_generator
+from configs import RetrieverConfig, ChunkerConfig, RerankerConfig
+from data_generation import get_data_generator
 from utils import save_parquet, setup_logging
 from configs import (DataGeneratorConfig, ChunkerConfig, 
                      RetrieverConfig, RerankerConfig)
@@ -93,9 +91,18 @@ if __name__ == "__main__":
     for method_config in config['methods']:
         logger.info(f"Method Config: {method_config}")
         single_config_dict = defaults.copy()
-
+        
         # Use pop() to get the 'name' and remove it from method_config dict
         method_name = method_config.pop('name')
+        retriever_type = method_config['retriever_config']['retriever_type']
+        # set the random seed for each method. base seed as 42.
+        # The random seed determines which entries will be sampled as no ground truth evidence.
+        # To avoid all the methods using the same random seed, which may lead to the certain entries are selected as no gt evidence. Then the model may only learn the pattern of these sampled entries, instead of our intention.
+        base_seed = 42
+        method_seed = base_seed + hash(method_name + retriever_type) % 1000000
+        random.seed(method_seed)
+        logger.info(f"Set unique random seed to {method_seed} for method '{method_name} {retriever_type}'")
+
         # merge the config.
         single_config_dict.update(method_config)
 
