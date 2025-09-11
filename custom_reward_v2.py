@@ -128,8 +128,8 @@ def reward_function(data,gt_evidences:List[str], gt_answers:List[str])->dict:
     evidence_text = text.split("</evidence>")[0][len("<evidence>"):]
 
     if choice == "<evidence>":
-        answer_r = max(answer_r, rouge_l_reward(answer_text, gt_answers, reward_multiplier=3.0))
-        evidence_r = max(evidence_r, rouge_l_reward(evidence_text, gt_evidences, reward_multiplier=2.0))
+        answer_r = max(answer_r, rouge_l_reward(answer_text, gt_answers, reward_multiplier=1.0))
+        evidence_r = max(evidence_r, rouge_l_reward(evidence_text, gt_evidences, reward_multiplier=1.0))
         total_reward += evidence_r
         total_reward += answer_r
         answer_length_punish = length_penalty(answer_text, gt_answers)
