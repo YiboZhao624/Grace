@@ -344,10 +344,11 @@ class QASPERDataGenerator:
             # fit the evidence into the template.
             prompt_template = copy.deepcopy(Prompt_templates[self.config.prompt_template])
             # Use replace method to avoid KeyError from curly braces in evidence text
-            content = prompt_template[1]["content"]
+            # set the -1 to suit the few-shot setting.
+            content = prompt_template[-1]["content"]
             content = content.replace("{question}", qa_data["question"])
             content = content.replace("{ref}", evidence_input)
-            prompt_template[1]["content"] = content
+            prompt_template[-1]["content"] = content
             entry["prompt"] = prompt_template
             examples.append(entry)
         return examples
