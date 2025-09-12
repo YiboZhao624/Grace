@@ -193,7 +193,9 @@ class Evaluator:
         denom = tp + fn
         return tp / denom if denom > 0 else 0.0
     
-    def _LLM_Judge(self, answer: str, ground_truth: List[str]) -> int:
+    def _LLM_Judge(self, answer: str, ground_truth: List[str], group_name: str) -> int:
+        if group_name == "gt_retrieved_fail":
+            ground_truth = ["I don't know.", "The provided evidence is not enough to answer the question."]
         LLM_Judge_prompt = '*************Consider a knowledge Q&A RAG task to test the capability of a testing model, the correct answer list is:*************\n' + "\n".join(ground_truth)
         LLM_Judge_prompt += '\n\n\n\n*************Here is the model\'s response:*************\n' + answer
         LLM_Judge_prompt += '\n\n\n\n*************Please check if the model\'s answer is correct. As long as the model\'s answer hits any item (or synonym) in the correct answer list, it can be considered correct. You only need to answer "yes" or "no".*************'
@@ -392,9 +394,9 @@ class Evaluator:
                 answer_results["Exact Match"] = answer_results.get("Exact Match",[]) + [self._Exact_Match(answers[i], ground_truths[i])]
                 evidence_results["Exact Match"] = evidence_results.get("Exact Match",[]) + [self._Exact_Match(chosen_evidences[i], ground_truth_evidences[i])]
             if "LJ" in self.metrics:
-                answer_results["LLM-as-a-Judge"] = answer_results.get("LLM-as-a-Judge",[]) + [self._LLM_Judge(answers[i], ground_truths[i])]
+                answer_results["LLM-as-a-Judge"] = answer_results.get("LLM-as-a-Judge",[]) + [self._LLM_Judge(answers[i], ground_truths[i], group_name)]
                 # due to the evidence is directly copied, it is unnecessary to judge the evidence.
-                # evidence_results[i]["LLM-as-a-Judge"] = self._LLM_Judge(chosen_evidences[i], ground_truth_evidences[i])
+                # evidence_results[i]["LLM-as-a-Judge"] = self._LLM_Judge(chosen_evidences[i], ground_truth_evidences[i], group_name)
             if "RR" in self.metrics:
                 result_RR = self._RR(full_answers[i], ground_truths[i], ground_truth_evidences[i], group_name=="gt_retrieved_success")
                 for key, value in result_RR.items():
