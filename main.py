@@ -94,7 +94,7 @@ if __name__ == "__main__":
         
         # Use pop() to get the 'name' and remove it from method_config dict
         method_name = method_config.pop('name')
-        retriever_type = method_config['retriever_config']['retriever_type']
+        retriever_type = method_config.get('retriever_config', {'retriever_type': 'Oracle'})['retriever_type']
         # set the random seed for each method. base seed as 42.
         # The random seed determines which entries will be sampled as no ground truth evidence.
         # To avoid all the methods using the same random seed, which may lead to the certain entries are selected as no gt evidence. Then the model may only learn the pattern of these sampled entries, instead of our intention.
