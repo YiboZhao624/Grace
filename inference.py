@@ -1,15 +1,14 @@
 # This file is used to conduct inference.
 # to make the data generation more aligned, we use the same parquet file for inference.
 
-from dataclasses import dataclass
 from llm import vLLM, GPT
-from utils import read_parquet, save_parquet, setup_logging, extract_answer_or_all, extract_evidence_or_none
-from typing import List, Dict, Literal
+from utils import read_parquet, save_parquet, setup_logging
+from typing import List, Dict
 from evaluator import Evaluator
 import json, os
 from tqdm import tqdm
 from configs import LLMConfig, InferenceConfigs
-from utils import resolve_file_name, ResolvedFilePath, organize_evaluation_results
+from utils import resolve_file_name, organize_evaluation_results
 from argparse import ArgumentParser
 
 parser = ArgumentParser()
@@ -76,25 +75,30 @@ if __name__ == "__main__":
         save_parquet(data, saving_path)
 
         logger.info(f"inference done, the data is saved to {saving_path}")
+        try:
+            os.makedirs(res_saving_path, exist_ok=True)
 
-        os.makedirs(res_saving_path, exist_ok=True)
+            logger.info("Initializing the evaluator...")
+            enabled_metrics = ["BS","EM","RL","BL","RR"]
+            kwargs = {
+                "BERT_path": "bert-base-uncased",
+                "device": "cuda:0"
+            }
+            if "LJ" in enabled_metrics:
+                custom_llm_config = LLMConfig(model_name="deepseek-chat", url="https://api.deepseek.com")
+                custom_llm = GPT(custom_llm_config)
+                kwargs["LJ_api"] = custom_llm
 
-        logger.info("Initializing the evaluator...")
-        enabled_metrics = ["BS","EM","RL","BL","RR"]
-        kwargs = {
-            "BERT_path": "bert-base-uncased",
-            "device": "cuda:0"
-        }
-        if "LJ" in enabled_metrics:
-            custom_llm_config = LLMConfig(model_name="deepseek-chat", url="https://api.deepseek.com")
-            custom_llm = GPT(custom_llm_config)
-            kwargs["LJ_api"] = custom_llm
+            evaluator = Evaluator(metrics=enabled_metrics, **kwargs)
+            logger.info("Evaluator initialized.")
 
-        evaluator = Evaluator(metrics=enabled_metrics, **kwargs)
-        logger.info("Evaluator initialized.")
+            all_results = evaluator.evaluate(data)
+            organized_results = organize_evaluation_results(all_results)
 
-        all_results = evaluator.evaluate(data)
-        organized_results = organize_evaluation_results(all_results)
-
-        with open(os.path.join(res_saving_path, f"{generate_method}_{wogt_rate}_{retriever}_{reranker}_{top_k}_{data_chunk_size}_all_results.json"), "w") as f:
-            json.dump(organized_results, f, indent=4)
+            with open(os.path.join(res_saving_path, f"{generate_method}_{wogt_rate}_{retriever}_{reranker}_{top_k}_{data_chunk_size}_all_results.json"), "w") as f:
+                json.dump(organized_results, f, indent=4)
+        except Exception as e:
+            logger.error(f"Error evaluating the data: {e}")
+            logger.error(f"please mannually start the evaluation process.")
+            logger.error(f"Now continue the inference process.")
+            continue
