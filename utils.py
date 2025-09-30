@@ -1,11 +1,13 @@
 import json
 import os
-from typing import List, Dict, Union
+from typing import List, Dict, Union, Optional
 import pandas as pd
 import logging
 import re
 import sys
 from dataclasses import dataclass
+import yaml
+import argparse
 
 @dataclass
 class ResolvedFilePath:
@@ -133,6 +135,50 @@ def safe_len(x):
     if x is None:
         return 1  # None 表示单配置，等价于长度1
     return len(x)
+
+def load_yaml_config(config_path: str, args: argparse.Namespace) -> dict:
+    with open(config_path, "r") as fin:
+        yaml_config: dict = yaml.safe_load(fin)
+
+    return yaml_config
+
+DATASET_TO_SPLIT_LIST: Dict[str, List[str]] = {
+    "nq": ["train", "validation"],
+    "triviaqa": ["train", "validation"],
+    "hotpotqa": ["train", "dev"],
+    "two_wiki": ["train", "dev"],
+    "popqa": ["test"],
+    "webqa": ["train", "test"],
+    "musique": ["train", "dev"],
+}
+
+
+def check_dataset_split(dataset: str, split: str) -> None:
+    assert dataset in DATASET_TO_SPLIT_LIST.keys(), f"Dataset {dataset} not found in predefined `DATASET_TO_SPLIT_LIST`"
+    assert split in DATASET_TO_SPLIT_LIST[dataset], (
+        f"Dataset {dataset} do not have split {split} in `DATASET_TO_SPLIT_LIST`"
+    )
+    return
+
+def create_dirs(root_dir: str, datasets: List[str]) -> None:
+    # Create saving directories if not exist.
+    if not os.path.exists(root_dir):
+        print(f"Create directory for dataset saving: {root_dir}")
+        os.makedirs(root_dir, exist_ok=True)
+
+    for dataset in datasets:
+        dataset_dir = os.path.join(root_dir, dataset)
+        os.makedirs(dataset_dir, exist_ok=True)
+
+    return
+
+
+def get_split_filepath(root_dir: str, dataset: str, split: str, sample_num: Optional[int]) -> str:
+    if sample_num is None:
+        filepath = os.path.join(root_dir, dataset, f"{split}.jsonl")
+    else:
+        filepath = os.path.join(root_dir, dataset, f"{split}_{sample_num}.jsonl")
+    return filepath
 
 def organize_evaluation_results(all_results: Dict[str, Dict[str, Dict[str, List[float]]]]) -> dict:
     organized_results = {}
