@@ -3,7 +3,10 @@ import json
 import pandas as pd
 import numpy as np
 import random
-from utils import setup_logging
+import argparse
+from typing import Dict, List, Optional
+from utils import setup_logging, load_yaml_config, check_dataset_split, create_dirs
+
 
 logger = setup_logging("Preprocess")
 
@@ -122,3 +125,27 @@ def preprocess_QASPER(data_folder):
 
 if __name__ == "__main__":
     preprocess_QASPER("./data/qasper")
+    parser = argparse.ArgumentParser()
+    parser.add_argument("config", type=str, help="the path of the yaml config file you want to use")
+    args = parser.parse_args()
+
+    yaml_config: dict = load_yaml_config(args.config, args)
+
+    # Read yaml configs
+    root_save_dir: str = yaml_config["root_save_dir"]
+    running_modes: Dict[str, bool] = yaml_config["running_modes"]
+    dataset2split: Dict[str, List[str]] = yaml_config["datasets"]
+    for dataset, splits in dataset2split.items():
+        for split in splits:
+            check_dataset_split(dataset, split)
+    
+    # Create directories for processed data saving.
+    create_dirs(root_save_dir, list(dataset2split.keys()))
+
+    if running_modes["build_split"]:
+        cut_off: Optional[int] = yaml_config["cut_off"]
+        for dataset, splits in dataset2split.items():
+            for split in splits:
+                dataset_dir: str = os.path.join(root_save_dir, dataset)
+                split_path: str = get_split_filepath(root_save_dir, dataset, split, sample_num=None)
+                reformat_dataset(dataset, split, split_path, dataset_dir, cut_off)
