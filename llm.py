@@ -100,3 +100,10 @@ if __name__ == "__main__":
     )
     gpt = GPT(config)
     print(gpt.generate("What is the capital of France?", temperature=0, max_tokens=10))
+
+    config = LLMConfig(
+        url="https://api.deepseek.com",
+        model_name="deepseek-reasoner",
+    )
+    gpt = GPT(config)
+    print(gpt.generate("What is the capital of France?", temperature=0, max_tokens=10))
