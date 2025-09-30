@@ -2,7 +2,7 @@
 
 set -e
 
-CONFIG_DIR="./configs"
+CONFIG_DIR="./configs/test_config"
 
 if [ ! -d "$CONFIG_DIR" ]; then
   echo "Error: Directory '$CONFIG_DIR' not found."
@@ -30,6 +30,6 @@ fi
 
 echo "========================================================================"
 echo " "
-echo "ALL EXPERIMENTS COMPLETED."
+echo "All Data Generated."
 echo " "
 echo "========================================================================"
