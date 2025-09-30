@@ -60,3 +60,17 @@ For evaluation, we provide the `evaluator.py`, which includes the class Evaluato
 4. LLM-as-a-Judge: We directly use the prompt provided by the [ARENA paper](https://arxiv.org/pdf/2505.13258), and we use the openai package to call the GPT-4o-mini API as the judge.
 
 You can deploy the vllm server with the trained LoRA adapter, and then leverage the `inference.py` script to inference and evaluate the model. Please note that the evaluation process requires an active internet connection.
+
+## Contribution Handing
+
+If you are interested in this project and want to contribute, there will be a few aspects you can contribute to:
+
+1. Documentation: We are still working on the documentation of the project. If you are interested in this project and want to contribute, you can help us improve the documentation.
+
+2. Test Code: You can provide the test code for the project.
+
+3. New Feature: If you want to add new features to the project, just implement the new feature and add the corresponding test code to faciliate our code review.
+
+4. Bug Fix: If you find any bugs in the project, please report them to us.
+
+If you want to contribute, feel free to start a pull request. We will reply and review your pull request as soon as possible.
