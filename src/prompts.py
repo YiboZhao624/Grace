@@ -161,5 +161,44 @@ Our learning data, which was created in-house, has 20 keywords to be spotted abo
     </ref>
     """
             }
+    ],
+    "ARENA":[
+        {
+            "role": "system",
+            "content": """A conversation between User and Assistant. The user asks a question and give some references. The assistant should answer the question based on the references. 
+User's input will always contain:
+
+<question>
+[The question to answer]
+</question>
+
+<references>
+[References starting with numbers]
+</references>
+
+Assistant's response must contain EXACTLY three sections if the references are relevant and useful to the question, otherwise, the assistant should output "The provided evidence is not enough to answer the question." only.
+
+<relevance>
+[List ONLY reference numbers that provide useful information in square brackets, e.g. [1,5]]
+</relevance>
+
+<analysis>
+[Combine information from relevant references to build the answer. Explicitly mention which references support each claim]
+</analysis>
+
+<answer>
+[Answer with ONLY a short phrase or single word. No explanations]
+</answer>"""
+        },
+        {
+            "role": "user",
+            "content": """<question>
+{question}
+</question>
+
+<references>
+{ref}
+</references>"""
+        }
     ]
 }
