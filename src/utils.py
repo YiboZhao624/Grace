@@ -1,6 +1,7 @@
 import json
 import os
-from typing import List, Dict, Union, Optional
+from typing import List, Dict, Union, Optional, Tuple
+from copy import deepcopy
 import pandas as pd
 import logging
 import re
@@ -80,22 +81,106 @@ def setup_logging(name, level=logging.INFO, log_file=None):
     return logger
 
 
-def load_raw_qasper_data(data_folder: str, split: Union[List[str], str] = "train"):
-    all_paper_data = {}
-    all_QA_data = {}
+def _normalize_splits(split: Union[List[str], str]) -> List[str]:
     if isinstance(split, str):
-        split = [split]
-    for s in split:
-        path = os.path.join(data_folder, s)
-        paper_path = os.path.join(path, "paper_data.json")
-        QA_path = os.path.join(path, "QA_data.json")
-        with open(paper_path, "r") as f:
-            paper_data = json.load(f)
-        with open(QA_path, "r") as f:
-            QA_data = json.load(f)
-        all_paper_data[s] = paper_data
-        all_QA_data[s] = QA_data
-    return all_paper_data, all_QA_data
+        return [split]
+    return list(split)
+
+
+def _build_full_text_from_contexts(contexts: List[Dict[str, str]]) -> str:
+    text_parts: List[str] = []
+    for context in contexts or []:
+        title = context.get("title", "") if isinstance(context, dict) else ""
+        text = context.get("text", "") if isinstance(context, dict) else ""
+        combined = "\n".join(part.strip() for part in [title, text] if part and part.strip())
+        if combined:
+            text_parts.append(combined)
+    return "\n\n".join(text_parts).strip()
+
+
+class BaseDatasetLoader:
+    def __init__(self, data_folder: str, split: Union[List[str], str]):
+        self.data_folder = data_folder
+        self.splits = _normalize_splits(split)
+
+    def load(self) -> Tuple[Dict[str, Dict], Dict[str, List[Dict]]]:
+        raise NotImplementedError
+
+
+class QasperDatasetLoader(BaseDatasetLoader):
+    def load(self) -> Tuple[Dict[str, Dict], Dict[str, List[Dict]]]:
+        all_paper_data: Dict[str, Dict[str, Dict]] = {}
+        all_QA_data: Dict[str, List[Dict]] = {}
+        for s in self.splits:
+            path = os.path.join(self.data_folder, s)
+            paper_path = os.path.join(path, "paper_data.json")
+            QA_path = os.path.join(path, "QA_data.json")
+            with open(paper_path, "r", encoding="utf-8") as f:
+                paper_data = json.load(f)
+            with open(QA_path, "r", encoding="utf-8") as f:
+                QA_data = json.load(f)
+            all_paper_data[s] = paper_data
+            all_QA_data[s] = QA_data
+        return all_paper_data, all_QA_data
+
+
+class MetadataBackedDatasetLoader(BaseDatasetLoader):
+    dataset_name: str = ""
+
+    def load(self) -> Tuple[Dict[str, Dict], Dict[str, List[Dict]]]:
+        all_paper_data: Dict[str, Dict[str, Dict]] = {}
+        all_QA_data: Dict[str, List[Dict]] = {}
+        for s in self.splits:
+            qa_path = os.path.join(self.data_folder, s, "QA_data.json")
+            with open(qa_path, "r", encoding="utf-8") as f:
+                qa_records: List[Dict] = json.load(f)
+
+            paper_data_split: Dict[str, Dict] = {}
+            qa_list: List[Dict] = []
+            for idx, record in enumerate(qa_records):
+                qa_entry = deepcopy(record)
+                paper_id = qa_entry.get("paper_id") or qa_entry.get("question_id") or f"{s}_{idx}"
+                metadata = qa_entry.get("metadata", {}) or {}
+                contexts = metadata.get("context") or []
+                full_text = _build_full_text_from_contexts(contexts) or qa_entry.get("question", "")
+
+                paper_data_split[paper_id] = {
+                    "title": contexts[0].get("title", "") if contexts else metadata.get("title", ""),
+                    "abstract": metadata.get("abstract", ""),
+                    "full_text": full_text,
+                    "contexts": contexts,
+                }
+
+                qa_entry["paper_id"] = paper_id
+                metadata["context"] = contexts
+                metadata["data_source"] = self.dataset_name or metadata.get("data_source", "")
+                qa_entry["metadata"] = metadata
+                qa_list.append(qa_entry)
+
+            all_paper_data[s] = paper_data_split
+            all_QA_data[s] = qa_list
+
+        return all_paper_data, all_QA_data
+
+
+class HotpotDatasetLoader(MetadataBackedDatasetLoader):
+    dataset_name = "HotpotQA"
+
+
+class TwoWikiDatasetLoader(MetadataBackedDatasetLoader):
+    dataset_name = "2WikiMultiHopQA"
+
+
+def load_raw_qasper_data(data_folder: str, split: Union[List[str], str] = "train"):
+    return QasperDatasetLoader(data_folder, split).load()
+
+
+def load_hotpotqa_data(data_folder: str, split: Union[List[str], str] = "train"):
+    return HotpotDatasetLoader(data_folder, split).load()
+
+
+def load_two_wiki_data(data_folder: str, split: Union[List[str], str] = "train"):
+    return TwoWikiDatasetLoader(data_folder, split).load()
 
 def save_parquet(data: List[Dict], path: str):
     df = pd.DataFrame(data)
