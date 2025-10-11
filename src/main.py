@@ -87,48 +87,71 @@ if __name__ == "__main__":
     defaults = config['data_generator_defaults']
     output_base_dir = config['output_base_dir']
 
-    # for each method, run generate_data_for_splits.
-    for method_config in config['methods']:
-        logger.info(f"Method Config: {method_config}")
-        single_config_dict = defaults.copy()
-        
-        # Use pop() to get the 'name' and remove it from method_config dict
-        method_name = method_config.pop('name')
-        retriever_type = method_config.get('retriever_config', {'retriever_type': 'Oracle'})['retriever_type']
-        # set the random seed for each method. base seed as 42.
-        # The random seed determines which entries will be sampled as no ground truth evidence.
-        # To avoid all the methods using the same random seed, which may lead to the certain entries are selected as no gt evidence. Then the model may only learn the pattern of these sampled entries, instead of our intention.
-        base_seed = 42
-        method_seed = base_seed + hash(method_name + retriever_type) % 1000000
-        random.seed(method_seed)
-        logger.info(f"Set unique random seed to {method_seed} for method '{method_name} {retriever_type}'")
+    dataset_entries = config.get('datasets')
+    if dataset_entries is None:
+        dataset_entries = [
+            {
+                'dataset': defaults.get('dataset', 'qasper'),
+                'data_folder': defaults.get('data_folder', './data/qasper'),
+                'split': defaults.get('split', ['train', 'val', 'test'])
+            }
+        ]
 
-        # merge the config.
-        single_config_dict.update(method_config)
+    # for each dataset-method combination, run generate_data_for_splits.
+    for dataset_cfg in dataset_entries:
+        for method_cfg in config['methods']:
+            logger.info(f"Dataset Config: {dataset_cfg}")
+            logger.info(f"Method Config: {method_cfg}")
 
-        chunker_cfg = ChunkerConfig(**single_config_dict.pop('chunker_config'))
-        retriever_cfg = RetrieverConfig(**single_config_dict.pop('retriever_config')) if 'retriever_config' in single_config_dict else None
-        reranker_cfg = RerankerConfig(**single_config_dict.pop('reranker_config')) if 'reranker_config' in single_config_dict else None
-        
-        data_gen_config = DataGeneratorConfig(
-            **single_config_dict,
-            chunker_config=chunker_cfg,
-            retriever_config=retriever_cfg,
-            reranker_config=reranker_cfg,
-            method=method_name
-        )
-        logger.info(f"Configs: {data_gen_config}")
-        data_generator = get_data_generator(data_gen_config)
+            combined_cfg = defaults.copy()
+            combined_cfg.update(dataset_cfg)
 
-        data = data_generator.generate_data_for_splits()
+            method_name = method_cfg['name']
+            retriever_type = method_cfg.get('retriever_config', {'retriever_type': 'Oracle'})['retriever_type']
 
-        # saving
-        for split_method_key, entries in data.items():
-            current_split = split_method_key.split("_")[0]
-            
-            # generate the filename and path
-            output_filename = generate_filename_from_config(data_gen_config, current_split)
-            output_path = os.path.join(output_base_dir, output_filename)
-            
-            save_parquet(entries, output_path)
-            logger.info(f"Successfully generated and saved data to: {output_path}")
+            # set dataset-specific seed to keep randomness consistent per dataset/method pair
+            base_seed = 42
+            method_seed = base_seed + hash(f"{dataset_cfg['dataset']}-{method_name}-{retriever_type}") % 1000000
+            random.seed(method_seed)
+            logger.info(
+                "Set unique random seed to %s for dataset '%s' method '%s %s'",
+                method_seed,
+                dataset_cfg['dataset'],
+                method_name,
+                retriever_type,
+            )
+
+            merged_method_cfg = method_cfg.copy()
+            merged_method_cfg.pop('name')
+            combined_cfg.update(merged_method_cfg)
+
+            chunker_cfg_dict = combined_cfg.pop('chunker_config')
+            chunker_cfg = ChunkerConfig(**chunker_cfg_dict)
+
+            retriever_cfg = None
+            if 'retriever_config' in combined_cfg:
+                retriever_cfg = RetrieverConfig(**combined_cfg.pop('retriever_config'))
+
+            reranker_cfg = None
+            if 'reranker_config' in combined_cfg:
+                reranker_cfg = RerankerConfig(**combined_cfg.pop('reranker_config'))
+
+            data_gen_config = DataGeneratorConfig(
+                **combined_cfg,
+                chunker_config=chunker_cfg,
+                retriever_config=retriever_cfg,
+                reranker_config=reranker_cfg,
+                method=method_name
+            )
+
+            logger.info(f"Resolved generator config: {data_gen_config}")
+            data_generator = get_data_generator(data_gen_config)
+
+            data = data_generator.generate_data_for_splits()
+
+            for split_method_key, entries in data.items():
+                current_split = split_method_key.split("_")[0]
+                output_filename = generate_filename_from_config(data_gen_config, current_split)
+                output_path = os.path.join(output_base_dir, output_filename)
+                save_parquet(entries, output_path)
+                logger.info(f"Successfully generated and saved data to: {output_path}")
