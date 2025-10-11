@@ -166,6 +166,7 @@ def process_hotpotqa_split(data: List[Dict], split: str) -> List[Dict]:
 def preprocess_hotpotqa(
     data_folder: str,
     train_sample_size: Optional[int] = None,
+    test_sample_size: Optional[int] = None,
     sample_seed: int = 42,
 ) -> None:
     split_to_file = {
@@ -182,9 +183,15 @@ def preprocess_hotpotqa(
         with open(path, "r", encoding="utf-8") as fin:
             raw_data = json.load(fin)
 
+        sample_size = None
         if split == "train":
+            sample_size = train_sample_size
+        elif split == "test":
+            sample_size = test_sample_size
+
+        if sample_size is not None:
             original_size = len(raw_data)
-            raw_data = _sample_list(raw_data, train_sample_size, sample_seed)
+            raw_data = _sample_list(raw_data, sample_size, sample_seed)
             if len(raw_data) != original_size:
                 logger.info(
                     f"HotpotQA {split}: sampled {len(raw_data)} entries from {original_size} (seed={sample_seed})"
@@ -247,6 +254,7 @@ def process_two_wiki_split(data: List[Dict], split: str) -> List[Dict]:
 def preprocess_two_wiki(
     data_folder: str,
     train_sample_size: Optional[int] = None,
+    test_sample_size: Optional[int] = None,
     sample_seed: int = 42,
 ) -> None:
     split_to_file = {
@@ -264,9 +272,15 @@ def preprocess_two_wiki(
         with open(path, "r", encoding="utf-8") as fin:
             raw_data = json.load(fin)
 
+        sample_size = None
         if split == "train":
+            sample_size = train_sample_size
+        elif split == "test":
+            sample_size = test_sample_size
+
+        if sample_size is not None:
             original_size = len(raw_data)
-            raw_data = _sample_list(raw_data, train_sample_size, sample_seed)
+            raw_data = _sample_list(raw_data, sample_size, sample_seed)
             if len(raw_data) != original_size:
                 logger.info(
                     f"2WikiMultiHopQA {split}: sampled {len(raw_data)} entries from {original_size} (seed={sample_seed})"
@@ -303,10 +317,22 @@ def parse_args() -> argparse.Namespace:
         help="Maximum HotpotQA train examples to keep. Use non-positive value to keep all.",
     )
     parser.add_argument(
+        "--hotpotqa-test-sample-size",
+        type=int,
+        default=5000,
+        help="Maximum HotpotQA test examples to keep. Use non-positive value to keep all.",
+    )
+    parser.add_argument(
         "--two-wiki-train-sample-size",
         type=int,
         default=10000,
         help="Maximum 2WikiMultiHopQA train examples to keep. Use non-positive value to keep all.",
+    )
+    parser.add_argument(
+        "--two-wiki-test-sample-size",
+        type=int,
+        default=3000,
+        help="Maximum 2WikiMultiHopQA test examples to keep. Use non-positive value to keep all.",
     )
     parser.add_argument(
         "--train-sample-seed",
@@ -327,6 +353,7 @@ def main() -> None:
         preprocess_hotpotqa(
             os.path.join(args.data_root, "hotpot"),
             train_sample_size=args.hotpotqa_train_sample_size,
+            test_sample_size=args.hotpotqa_test_sample_size,
             sample_seed=args.train_sample_seed,
         )
 
@@ -334,6 +361,7 @@ def main() -> None:
         preprocess_two_wiki(
             os.path.join(args.data_root, "2wikimultihop"),
             train_sample_size=args.two_wiki_train_sample_size,
+            test_sample_size=args.two_wiki_test_sample_size,
             sample_seed=args.train_sample_seed,
         )
 
