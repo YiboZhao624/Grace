@@ -73,8 +73,13 @@ class vLLMReranker(Reranker):
             "top_n": len(evidence)
         }
 
-        response = requests.post(self.base_url, headers=headers, json=payload)
-        response.raise_for_status()
+        try:
+            response = requests.post(self.base_url, headers=headers, json=payload)
+            response.raise_for_status()
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Error: Network request failed: {e}")
+            logger.error(f"Payload: {payload}")
+            raise
         result = response.json()
         ordered_evidence = [result["results"][i]["document"] for i in range(len(result["results"]))]
         reranked_index = [result["results"][i]["index"] for i in range(len(result["results"]))]
