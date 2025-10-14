@@ -124,8 +124,8 @@ def reward_function(data,gt_evidences:List[str], gt_answers:List[str])->dict:
     total_reward += choice_r
     answer_r = 0
     evidence_r = 0
-    answer_text = text.split("</answer>")[0][len("<answer>"):]
-    evidence_text = text.split("</evidence>")[0][len("<evidence>"):]
+    answer_text = text.split("</answer>")[0].split("<answer>")[1]
+    evidence_text = text.split("</evidence>")[0].split("<evidence>")[1]
 
     if choice == "<evidence>":
         answer_r = max(answer_r, rouge_l_reward(answer_text, gt_answers, reward_multiplier=3.0))
@@ -161,8 +161,8 @@ def val_reward_function(data,gt_evidences:List[str], gt_answers:List[str], gt_ev
     total_reward += choice_r
     answer_r = 0
     evidence_r = 0
-    answer_text = text.split("</answer>")[0][len("<answer>"):]
-    evidence_text = text.split("</evidence>")[0][len("<evidence>"):]
+    answer_text = text.split("</answer>")[0].split("<answer>")[1]
+    evidence_text = text.split("</evidence>")[0].split("<evidence>")[1]
     if choice == "<evidence>":
         choice = 0
         answer_r = max(answer_r, rouge_l_reward(answer_text, gt_answers, reward_multiplier=1.0))
