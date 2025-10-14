@@ -51,8 +51,8 @@ import json
 import random
 import copy
 import logging
-
-from typing import List, Dict, Any, Tuple, Optional, Union
+from numbers import Integral
+from typing import List, Dict, Any, Tuple, Optional, Union, Set
 
 import pandas as pd
 import numpy as np
@@ -237,23 +237,44 @@ class BaseDatasetGenerator:
 
     def _convert_evidence_to_chunk_ids(self, gt_evidence: List[str], paper_id: str, split: str) -> List[int]:
         evidence_chunk_ids: set[int] = set()
+        use_overlap_matching = self.dataset_key == "qasper"
+        paper_chunks = self.paper_data[split][paper_id]["chunks"]
+
         for evidence in gt_evidence:
-            if not isinstance(evidence, str) or not evidence.strip():
+            if not isinstance(evidence, str):
                 continue
-            for idx, chunk in enumerate(self.paper_data[split][paper_id]["chunks"]):
-                if evidence.strip() in chunk or chunk in evidence.strip():
+            evidence_text = evidence.strip()
+            if not evidence_text:
+                continue
+
+            for idx, chunk in enumerate(paper_chunks):
+                if not isinstance(chunk, str):
+                    continue
+                chunk_text = chunk.strip()
+                if not chunk_text:
+                    continue
+
+                if evidence_text in chunk_text or chunk_text in evidence_text:
                     evidence_chunk_ids.add(idx)
                     continue
-                evidence_words = set(evidence.lower().split())
-                chunk_words = set(chunk.lower().split())
-                if evidence_words:
-                    recall = len(evidence_words & chunk_words) / len(evidence_words)
-                    precision = len(evidence_words & chunk_words) / len(chunk_words)
-                    if (
-                        recall >= self.config.recall_threshold
-                        or precision >= self.config.precision_threshold
-                    ):
-                        evidence_chunk_ids.add(idx)
+
+                if not use_overlap_matching:
+                    continue
+
+                evidence_words = set(evidence_text.lower().split())
+                chunk_words = set(chunk_text.lower().split())
+                if not evidence_words or not chunk_words:
+                    continue
+
+                overlap = evidence_words & chunk_words
+                recall = len(overlap) / len(evidence_words)
+                precision = len(overlap) / len(chunk_words)
+                if (
+                    recall >= self.config.recall_threshold
+                    or precision >= self.config.precision_threshold
+                ):
+                    evidence_chunk_ids.add(idx)
+
         return list(evidence_chunk_ids)
 
     def _get_gt_evidence(self, qa_data: Dict, split: str) -> Tuple[List[int], List[str]]:
@@ -276,6 +297,110 @@ class BaseDatasetGenerator:
         if not self.config.number_template:
             return "\n\n".join(chunk_text_list)
         return "\n\n".join(f"{idx + 1}.{text}" for idx, text in enumerate(chunk_text_list))
+
+    def _requires_full_gt_coverage(self) -> bool:
+        return self.dataset_key in {"hotpotqa", "2wikimultihop"}
+
+    def _effective_top_k(self, gt_evidence_ids: List[int]) -> int:
+        '''
+        For QASPER, it is the original top_k, as any gt evidence is enough to support the answer.
+        For the HotpotQA and 2WikiMultihop, it is the max of the original top_k and the number of unique gt evidence ids. As we need all of the gt evidence ids to support the answer.
+        '''
+        if not gt_evidence_ids:
+            return self.config.top_k
+        unique_count = len({idx for idx in gt_evidence_ids if isinstance(idx, int)})
+        if self._requires_full_gt_coverage():
+            return max(self.config.top_k, unique_count)
+        if self.dataset_key == "qasper":
+            return max(1, self.config.top_k)
+        return self.config.top_k
+
+    @staticmethod
+    def _truncate_preserving_gt(order: List[int], limit: int, gt_set: Set[int]) -> List[int]:
+        if limit <= 0:
+            return []
+        if len(order) <= limit:
+            deduped: List[int] = []
+            seen: Set[int] = set()
+            for idx in order:
+                if idx in seen:
+                    continue
+                deduped.append(idx)
+                seen.add(idx)
+            return deduped
+        result: List[int] = []
+        seen: Set[int] = set()
+        required_order: List[int] = []
+        required_seen: Set[int] = set()
+        for idx in order:
+            if idx in gt_set and idx not in required_seen:
+                required_order.append(idx)
+                required_seen.add(idx)
+        for idx in order:
+            if idx in seen:
+                continue
+            if len(result) >= limit:
+                break
+            remaining_slots = limit - len(result)
+            remaining_required = [req for req in required_order if req not in result]
+            if idx in gt_set:
+                result.append(idx)
+                seen.add(idx)
+            else:
+                if remaining_slots > len(remaining_required):
+                    result.append(idx)
+                    seen.add(idx)
+        for idx in required_order:
+            if idx not in result:
+                if len(result) < limit:
+                    result.append(idx)
+                else:
+                    for pos in range(len(result) - 1, -1, -1):
+                        if result[pos] not in gt_set:
+                            result[pos] = idx
+                            break
+        final: List[int] = []
+        final_seen: Set[int] = set()
+        for idx in result:
+            if idx in final_seen:
+                continue
+            final.append(idx)
+            final_seen.add(idx)
+            if len(final) >= limit:
+                break
+        return final
+
+    def _merge_candidate_with_gt(self, candidate_ids: List[int], gt_evidence_ids: List[int], limit: int) -> List[int]:
+        gt_set: Set[int] = {idx for idx in gt_evidence_ids if isinstance(idx, int)}
+        seen: Set[int] = set()
+        merged: List[int] = []
+
+        def _append_unique(source: List[int]) -> None:
+            for idx in source:
+                if not (isinstance(idx, int) or isinstance(idx, np.int64)):
+                    continue
+                if idx in seen:
+                    continue
+                merged.append(idx)
+                seen.add(idx)
+
+        _append_unique(candidate_ids)
+        _append_unique(gt_evidence_ids)
+
+        effective_limit = limit
+        if effective_limit is None or effective_limit <= 0:
+            effective_limit = max(len(gt_set), len(merged))
+
+        if effective_limit > 0 and len(merged) > effective_limit:
+            merged = self._truncate_preserving_gt(merged, effective_limit, gt_set)
+
+        if effective_limit > 0 and len(merged) > effective_limit:
+            merged = merged[:effective_limit]
+
+        if not merged and candidate_ids:
+            merged = candidate_ids[:effective_limit] if effective_limit > 0 else candidate_ids
+
+        return merged
 
     def _maybe_prepare_train_flags(self, split: str) -> None:
         if split != "train":
@@ -366,11 +491,12 @@ class QasperDatasetMixin:
                     text_parts.append(title.strip())
                 if isinstance(abstract, str) and abstract.strip():
                     text_parts.append(abstract.strip())
-                contexts = paper.get("contexts") or []
+                contexts = paper.get("full_text") or []
                 for context in contexts:
-                    ctx_title = context.get("title", "") if isinstance(context, dict) else ""
-                    ctx_text = context.get("text", "") if isinstance(context, dict) else ""
-                    combined = "\n".join(part.strip() for part in [ctx_title, ctx_text] if part and part.strip())
+                    ctx_title = context.get("section_name", "") if isinstance(context, dict) else ""
+                    ctx_text = context.get("paragraphs", []) if isinstance(context, dict) else []
+                    to_combine = [ctx_title] + ctx_text
+                    combined = "\n".join(part.strip() for part in to_combine if part and part.strip())
                     if combined:
                         text_parts.append(combined)
                 paper["full_text"] = "\n\n".join(text_parts)
@@ -406,9 +532,12 @@ class RetrieverDataGenerator(BaseDatasetGenerator):
         split: str,
     ) -> Tuple[List[str], Dict]:
         assert self.retriever is not None
-        evidence_texts, retriever_res = self.retriever.retrieve(qa_data["question"], self.config.top_k + 3)
+        top_k_for_gt = self._effective_top_k(gt_evidence_ids)
+        retrieve_k = max(self.config.top_k + 3, top_k_for_gt)
+        evidence_texts, retriever_res = self.retriever.retrieve(qa_data["question"], retrieve_k)
         retrieved_ids = [idx for idx, _ in retriever_res][: len(self.paper_data[split][qa_data["paper_id"]]["chunks"])]
         if split == "train":
+            entry["reward_model"]["ground_truth"]["gt_evidence_retrieved"] = None
             if not qa_data.get("gt_evidence", True):
                 entry["extra_info"]["generation_type"] = "wo_gt_evidence"
                 final_evidence_ids = [idx for idx in retrieved_ids if idx not in gt_evidence_ids][: self.config.top_k]
@@ -418,10 +547,11 @@ class RetrieverDataGenerator(BaseDatasetGenerator):
                 entry["reward_model"]["ground_truth"]["gt_evidence"] = [""]
             else:
                 entry["extra_info"]["generation_type"] = "gt_evidence"
-                final_evidence_ids = merge_by_reverse_removal(retrieved_ids, gt_evidence_ids)[: self.config.top_k]
+                merged_ids = merge_by_reverse_removal(retrieved_ids, gt_evidence_ids)
+                final_evidence_ids = self._merge_candidate_with_gt(merged_ids, gt_evidence_ids, top_k_for_gt)
                 entry["extra_info"]["gt_evidence_chunk_ids"] = gt_evidence_ids
                 entry["extra_info"]["evidence_chunk_ids"] = final_evidence_ids
-                entry["extra_info"]["distractor_chunk_ids"] = [idx for idx in retrieved_ids if idx not in final_evidence_ids]
+                entry["extra_info"]["distractor_chunk_ids"] = [idx for idx in merged_ids if idx not in final_evidence_ids]
                 entry["reward_model"]["ground_truth"]["gt_evidence"] = gt_evidence_text
             evidence_chunks = [
                 self.paper_data[split][qa_data["paper_id"]]["chunks"][chunk_idx]
@@ -429,14 +559,19 @@ class RetrieverDataGenerator(BaseDatasetGenerator):
             ]
         else:
             entry["extra_info"]["generation_type"] = "retrieved"
-            top_ids = retrieved_ids[:self.config.top_k]
+            top_ids = retrieved_ids
             entry["extra_info"]["evidence_chunk_ids"] = top_ids
-            entry["extra_info"]["distractor_chunk_ids"] = []
+            entry["extra_info"]["distractor_chunk_ids"] = [idx for idx in top_ids if idx not in gt_evidence_ids]
             entry["extra_info"]["gt_evidence_chunk_ids"] = gt_evidence_ids
             entry["reward_model"]["ground_truth"]["gt_evidence"] = gt_evidence_text
-            entry["reward_model"]["ground_truth"]["gt_evidence_retrieved"] = any(
-                evidence_id in top_ids for evidence_id in gt_evidence_ids
-            )
+            if self._requires_full_gt_coverage() and gt_evidence_ids:
+                entry["reward_model"]["ground_truth"]["gt_evidence_retrieved"] = all(
+                    evidence_id in top_ids for evidence_id in gt_evidence_ids
+                )
+            else:
+                entry["reward_model"]["ground_truth"]["gt_evidence_retrieved"] = any(
+                    evidence_id in top_ids for evidence_id in gt_evidence_ids
+                )
             evidence_chunks = [
                 self.paper_data[split][qa_data["paper_id"]]["chunks"][chunk_idx]
                 for chunk_idx in top_ids
@@ -462,7 +597,17 @@ class OracleDataGenerator(BaseDatasetGenerator):
         entry["reward_model"]["ground_truth"]["gt_evidence"] = gt_evidence_text
         if split != "train":
             entry["reward_model"]["ground_truth"]["gt_evidence_retrieved"] = True
-        return gt_evidence_text, entry
+        chunks = self.paper_data[split][qa_data["paper_id"]]["chunks"]
+        seen: Set[int] = set()
+        evidence_chunks: List[str] = []
+        for chunk_idx in gt_evidence_ids:
+            if chunk_idx in seen or not (0 <= chunk_idx < len(chunks)):
+                continue
+            seen.add(chunk_idx)
+            evidence_chunks.append(chunks[chunk_idx])
+        if not evidence_chunks:
+            evidence_chunks = gt_evidence_text
+        return evidence_chunks, entry
 
 
 class RetrieverRerankerDataGenerator(BaseDatasetGenerator):
@@ -488,16 +633,45 @@ class RetrieverRerankerDataGenerator(BaseDatasetGenerator):
         split: str,
     ) -> Tuple[List[str], Dict]:
         assert self.retriever is not None and self.reranker is not None
-        evidence_texts, retriever_res = self.retriever.retrieve(qa_data["question"], self.config.top_k + 3)
+        top_k_for_gt = self._effective_top_k(gt_evidence_ids)
+        retrieve_k = max(self.config.top_k + 5, top_k_for_gt)
+        evidence_texts, retriever_res = self.retriever.retrieve(qa_data["question"], retrieve_k)
         retrieved_ids = [idx for idx, _ in retriever_res]
-        candidate_chunks = [
-            self.paper_data[split][qa_data["paper_id"]]["chunks"][chunk_idx]
-            for chunk_idx in retrieved_ids
-        ]
+        if split == "train":
+            candidate_ids = merge_by_reverse_removal(retrieved_ids, gt_evidence_ids)
+            candidate_ids = self._merge_candidate_with_gt(
+                candidate_ids,
+                gt_evidence_ids,
+                max(retrieve_k, top_k_for_gt),
+            )
+        else:
+            seen_ids: Set[int] = set()
+            candidate_ids = []
+            for idx in retrieved_ids:
+                if not isinstance(idx, Integral):
+                    continue
+                if idx in seen_ids:
+                    continue
+                candidate_ids.append(idx)
+                seen_ids.add(idx)
+                if len(candidate_ids) >= retrieve_k:
+                    break
+        document_chunks = self.paper_data[split][qa_data["paper_id"]]["chunks"]
+        valid_candidate_ids: List[int] = []
+        candidate_chunks: List[str] = []
+        for chunk_idx in candidate_ids:
+            if not isinstance(chunk_idx, Integral):
+                continue
+            idx_int = int(chunk_idx)
+            if not (0 <= idx_int < len(document_chunks)):
+                continue
+            valid_candidate_ids.append(idx_int)
+            candidate_chunks.append(document_chunks[idx_int])
         reranked_index, reranked_evidence = self.reranker.rerank(candidate_chunks, qa_data["question"])
-        reranked_ids = [retrieved_ids[idx] for idx in reranked_index]
+        reranked_ids = [valid_candidate_ids[idx] for idx in reranked_index]
         self.logger.debug("Reranked chunk ids: %s", reranked_ids)
         if split == "train":
+            entry["reward_model"]["ground_truth"]["gt_evidence_retrieved"] = None
             if not qa_data.get("gt_evidence", True):
                 entry["extra_info"]["generation_type"] = "wo_gt_evidence"
                 final_ids = [idx for idx in reranked_ids if idx not in gt_evidence_ids][: self.config.top_k]
@@ -507,7 +681,7 @@ class RetrieverRerankerDataGenerator(BaseDatasetGenerator):
                 entry["reward_model"]["ground_truth"]["gt_evidence"] = [""]
             else:
                 entry["extra_info"]["generation_type"] = "gt_evidence"
-                final_ids = merge_by_reverse_removal(reranked_ids, gt_evidence_ids)[: self.config.top_k]
+                final_ids = self._merge_candidate_with_gt(reranked_ids, gt_evidence_ids, top_k_for_gt)
                 entry["extra_info"]["evidence_chunk_ids"] = final_ids
                 entry["extra_info"]["distractor_chunk_ids"] = [idx for idx in reranked_ids if idx not in final_ids]
                 entry["extra_info"]["gt_evidence_chunk_ids"] = gt_evidence_ids
@@ -518,14 +692,29 @@ class RetrieverRerankerDataGenerator(BaseDatasetGenerator):
             ]
         else:
             entry["extra_info"]["generation_type"] = "retrieved"
-            top_ids = reranked_ids[: self.config.top_k]
+            seen: Set[int] = set()
+            top_ids: List[int] = []
+            for idx in reranked_ids:
+                if idx in seen:
+                    continue
+                top_ids.append(idx)
+                seen.add(idx)
+                if top_k_for_gt > 0 and len(top_ids) >= top_k_for_gt:
+                    break
             entry["extra_info"]["evidence_chunk_ids"] = top_ids
-            entry["extra_info"]["distractor_chunk_ids"] = []
+            entry["extra_info"]["distractor_chunk_ids"] = [idx for idx in top_ids if idx not in gt_evidence_ids]
             entry["extra_info"]["gt_evidence_chunk_ids"] = gt_evidence_ids
             entry["reward_model"]["ground_truth"]["gt_evidence"] = gt_evidence_text
-            entry["reward_model"]["ground_truth"]["gt_evidence_retrieved"] = any(
-                evidence_id in top_ids for evidence_id in gt_evidence_ids
-            )
+            if self._requires_full_gt_coverage() and gt_evidence_ids:
+                self.logger.debug("%s eval requires full GT coverage", self.dataset_key)
+                entry["reward_model"]["ground_truth"]["gt_evidence_retrieved"] = all(
+                    evidence_id in top_ids for evidence_id in gt_evidence_ids
+                )
+            else:
+                self.logger.debug("%s eval allows partial GT coverage", self.dataset_key)
+                entry["reward_model"]["ground_truth"]["gt_evidence_retrieved"] = any(
+                    evidence_id in top_ids for evidence_id in gt_evidence_ids
+                )
             evidence_chunks = [
                 self.paper_data[split][qa_data["paper_id"]]["chunks"][chunk_idx]
                 for chunk_idx in top_ids
