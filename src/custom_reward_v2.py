@@ -202,7 +202,7 @@ def default_compute_score(data_source, solution_str, ground_truth, extra_info=No
      Raises: 
          NotImplementedError: If the reward function is not implemented for the given data source. 
      """ 
-    if data_source in ["QASPER"]:
+    if data_source.lower() in ["qasper"]:
        gt_evidence = ground_truth["gt_evidence"]
        gt_answer = ground_truth["answer"]
        gt_evidence_retrieved = ground_truth.get("gt_evidence_retrieved", None)
@@ -210,6 +210,14 @@ def default_compute_score(data_source, solution_str, ground_truth, extra_info=No
            res = reward_function(solution_str, gt_evidence, gt_answer)
        else:
            res = val_reward_function(solution_str, gt_evidence, gt_answer, gt_evidence_retrieved)
+    elif data_source in ["HOTPOTQA", "2WIKIMULTIHOP"]:
+        gt_evidence = " ".join(ground_truth["gt_evidence"])
+        gt_answer = ground_truth["answer"]
+        gt_evidence_retrieved = ground_truth.get("gt_evidence_retrieved", None)
+        if gt_evidence_retrieved is None:
+            res = reward_function(solution_str, gt_evidence, gt_answer)
+        else:
+            res = val_reward_function(solution_str, gt_evidence, gt_answer, gt_evidence_retrieved)
     else: 
         raise NotImplementedError(f"Reward function is not implemented for {data_source=}") 
  
