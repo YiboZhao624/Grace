@@ -183,10 +183,12 @@ def preprocess_hotpotqa(
         with open(path, "r", encoding="utf-8") as fin:
             raw_data = json.load(fin)
 
+        logical_split = "test" if split == "dev" else split
+
         sample_size = None
-        if split == "train":
+        if logical_split == "train":
             sample_size = train_sample_size
-        elif split == "test":
+        elif logical_split == "test":
             sample_size = test_sample_size
 
         if sample_size is not None:
@@ -194,13 +196,13 @@ def preprocess_hotpotqa(
             raw_data = _sample_list(raw_data, sample_size, sample_seed)
             if len(raw_data) != original_size:
                 logger.info(
-                    f"HotpotQA {split}: sampled {len(raw_data)} entries from {original_size} (seed={sample_seed})"
+                    f"HotpotQA {logical_split} (source={split}): sampled {len(raw_data)} entries from {original_size} (seed={sample_seed})"
                 )
 
-        processed = process_hotpotqa_split(raw_data, split)
-        logger.info(f"HotpotQA {split}: {len(processed)} entries")
+        processed = process_hotpotqa_split(raw_data, logical_split)
+        logger.info(f"HotpotQA {logical_split}: {len(processed)} entries (source={split})")
 
-        split_dir = os.path.join(data_folder, split)
+        split_dir = os.path.join(data_folder, logical_split)
         os.makedirs(split_dir, exist_ok=True)
         with open(os.path.join(split_dir, "QA_data.json"), "w", encoding="utf-8") as fout:
             json.dump(processed, fout, indent=2, ensure_ascii=False)
