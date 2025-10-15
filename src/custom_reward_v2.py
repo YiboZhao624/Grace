@@ -1,16 +1,42 @@
 from rouge_score import rouge_scorer
+import string
 
 
 scorer = rouge_scorer.RougeScorer(['rougeL'], use_stemmer=True)
+
+_STOPWORDS = {
+    "am",
+    "is",
+    "are",
+    "was",
+    "were",
+    "the",
+    "a",
+    "an",
+}
+
+
+def text_normalize(text: str) -> str:
+    """Lowercase, remove punctuation, and strip common stopwords."""
+    if not text:
+        return ""
+
+    text = text.lower()
+    text = text.translate(str.maketrans("", "", string.punctuation))
+    tokens = text.split()
+    filtered_tokens = [token for token in tokens if token not in _STOPWORDS]
+    return " ".join(filtered_tokens)
 
 def rouge_l_reward(generated_text: str, ground_truth_list: list[str], reward_multiplier: float = 5.0):
     """ROUGE-L F1 as reward, and amplify the reward value to align with the <llm> part."""
     if not generated_text or not any(ground_truth_list):
         return 0.0
 
+    generated_text = text_normalize(generated_text)
     max_f1 = 0.0
     for gt in ground_truth_list:
         if not gt: continue
+        gt = text_normalize(gt)
         scores = scorer.score(gt, generated_text)
         f1 = scores['rougeL'].fmeasure
         if f1 > max_f1:
