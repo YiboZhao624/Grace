@@ -4,28 +4,31 @@ import string
 
 scorer = rouge_scorer.RougeScorer(['rougeL'], use_stemmer=True)
 
-_STOPWORDS = {
-    "am",
-    "is",
-    "are",
-    "was",
-    "were",
-    "the",
-    "a",
-    "an",
-}
+# _STOPWORDS = {
+#     "am",
+#     "is",
+#     "are",
+#     "was",
+#     "were",
+#     "the",
+#     "a",
+#     "an",
+# }
 
 
-def text_normalize(text: str) -> str:
-    """Lowercase, remove punctuation, and strip common stopwords."""
-    if not text:
-        return ""
+# def text_normalize(text: str) -> str:
+#     """Lowercase, remove punctuation, and strip common stopwords."""
+#     if not text:
+#         return ""
 
-    text = text.lower()
-    text = text.translate(str.maketrans("", "", string.punctuation))
-    tokens = text.split()
-    filtered_tokens = [token for token in tokens if token not in _STOPWORDS]
-    return " ".join(filtered_tokens)
+#     text = text.lower()
+#     text = text.translate(str.maketrans("", "", string.punctuation))
+#     tokens = text.split()
+#     filtered_tokens = [token for token in tokens if token not in _STOPWORDS]
+#     return " ".join(filtered_tokens)
+
+def text_normalize(text):
+    return text
 
 def rouge_l_reward(generated_text: str, ground_truth_list: list[str], reward_multiplier: float = 5.0):
     """ROUGE-L F1 as reward, and amplify the reward value to align with the <llm> part."""
@@ -236,7 +239,7 @@ def default_compute_score(data_source, solution_str, ground_truth, extra_info=No
        else:
            res = val_reward_function(solution_str, gt_evidence, gt_answer, gt_evidence_retrieved)
     elif data_source in ["HOTPOTQA", "2WIKIMULTIHOP"]:
-        gt_evidence = " ".join(ground_truth["gt_evidence"])
+        gt_evidence = [" ".join(ground_truth["gt_evidence"])]
         gt_answer = ground_truth["answer"]
         gt_evidence_retrieved = ground_truth.get("gt_evidence_retrieved", None)
         if gt_evidence_retrieved is None:
