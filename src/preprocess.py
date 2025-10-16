@@ -262,22 +262,23 @@ def preprocess_two_wiki(
     split_to_file = {
         "train": "data/train.json",
         "dev": "data/dev.json",
-        "test": "data/test.json",
     }
 
-    for split, relative_path in split_to_file.items():
+    for raw_split, relative_path in split_to_file.items():
+        logical_split = "test" if raw_split == "dev" else raw_split
+
         path = os.path.join(data_folder, relative_path)
         if not os.path.exists(path):
-            logger.warning(f"2WikiMultiHopQA {split} file not found: {path}. Skipping.")
+            logger.warning(f"2WikiMultiHopQA {logical_split} file not found: {path}. Skipping.")
             continue
 
         with open(path, "r", encoding="utf-8") as fin:
             raw_data = json.load(fin)
 
-        sample_size = None
-        if split == "train":
+        sample_size: Optional[int] = None
+        if logical_split == "train":
             sample_size = train_sample_size
-        elif split == "test":
+        elif logical_split == "test":
             sample_size = test_sample_size
 
         if sample_size is not None:
@@ -285,13 +286,13 @@ def preprocess_two_wiki(
             raw_data = _sample_list(raw_data, sample_size, sample_seed)
             if len(raw_data) != original_size:
                 logger.info(
-                    f"2WikiMultiHopQA {split}: sampled {len(raw_data)} entries from {original_size} (seed={sample_seed})"
+                    f"2WikiMultiHopQA {logical_split} (source={raw_split}): sampled {len(raw_data)} entries from {original_size} (seed={sample_seed})"
                 )
 
-        processed = process_two_wiki_split(raw_data, split)
-        logger.info(f"2WikiMultiHopQA {split}: {len(processed)} entries")
+        processed = process_two_wiki_split(raw_data, logical_split)
+        logger.info(f"2WikiMultiHopQA {logical_split}: {len(processed)} entries (source={raw_split})")
 
-        split_dir = os.path.join(data_folder, split)
+        split_dir = os.path.join(data_folder, logical_split)
         os.makedirs(split_dir, exist_ok=True)
         with open(os.path.join(split_dir, "QA_data.json"), "w", encoding="utf-8") as fout:
             json.dump(processed, fout, indent=2, ensure_ascii=False)
