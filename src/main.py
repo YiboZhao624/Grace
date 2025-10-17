@@ -99,6 +99,8 @@ if __name__ == "__main__":
 
     # for each dataset-method combination, run generate_data_for_splits.
     for dataset_cfg in dataset_entries:
+        dataset_prompt_template = dataset_cfg.get('prompt_template')
+
         for method_cfg in config['methods']:
             logger.info(f"Dataset Config: {dataset_cfg}")
             logger.info(f"Method Config: {method_cfg}")
@@ -124,6 +126,9 @@ if __name__ == "__main__":
             merged_method_cfg = method_cfg.copy()
             merged_method_cfg.pop('name')
             combined_cfg.update(merged_method_cfg)
+
+            if dataset_prompt_template is not None:
+                combined_cfg['prompt_template'] = dataset_prompt_template
 
             chunker_cfg_dict = combined_cfg.pop('chunker_config')
             chunker_cfg = ChunkerConfig(**chunker_cfg_dict)
