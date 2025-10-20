@@ -204,7 +204,8 @@ class Evaluator:
         LLM_Judge_prompt = '*************Consider a knowledge Q&A RAG task to test the capability of a testing model, the correct answer list is:*************\n' + "\n".join(ground_truth)
         LLM_Judge_prompt += '\n\n\n\n*************Here is the model\'s response:*************\n' + answer
         LLM_Judge_prompt += '\n\n\n\n*************Please check if the model\'s answer is correct. As long as the model\'s answer hits any item (or synonym) in the correct answer list, it can be considered correct. You only need to answer "yes" or "no".*************'
-        return 1 if self.gpt.generate(LLM_Judge_prompt).lower() == "yes" else 0
+        response = self.gpt.generate(LLM_Judge_prompt, temperature=0.0, max_tokens=10).lower()
+        return 1 if response == "yes" else 0
 
     def _RR(self, full_answer: str, ground_truth_answers: List[str], ground_truth_evidences: List[str], gt_evidence_retrieved: bool) -> dict:
         # reward_function(data, gt_evidences, gt_answers)
@@ -467,45 +468,86 @@ class Evaluator:
 
 if __name__ == '__main__':
     parser = ArgumentParser()
-    parser.add_argument("--path", type=str)
+    parser.add_argument("--path", type=str, nargs="+")
+    parser.add_argument("--num_examples", type=int, default=3)
+    parser.add_argument("--metrics", type=str, nargs="+", default=["BS","EM","RL","BL","RR","LJ"])
     args = parser.parse_args()
     
-    path = args.path
+    paths = args.path
+    if isinstance(paths, str):
+        paths = [paths]
+    num_examples = args.num_examples
 
-    data = read_parquet(path)
+    enabled_metrics = args.metrics
+    if isinstance(enabled_metrics, str):
+        enabled_metrics = [enabled_metrics]
 
     logger = setup_logging("Evaluator")
 
     os.environ['TRANSFORMERS_CACHE'] = "/root/.cache/huggingface/hub/"
 
-    res_saving_path = "/".join(path.split("/")[:-1])
+    for path in paths:
+        data = read_parquet(path)
 
-    resolved_file_name = resolve_file_name(path)
-    split = resolved_file_name.split
-    Dataset_name = resolved_file_name.dataset
-    data_chunk_size = resolved_file_name.chunk_size
-    retriever = resolved_file_name.retriever
-    reranker = resolved_file_name.reranker
-    top_k = resolved_file_name.top_k
-    wogt_rate = resolved_file_name.wogt_rate
-    generate_method = resolved_file_name.method
+        res_saving_path = "/".join(path.split("/")[:-1])
 
-    logger.info("Initializing the evaluator...")
-    enabled_metrics = ["BS","EM","RL","BL","RR"]
-    kwargs = {
-        "BERT_path": "bert-base-uncased",
-        "device": "cuda:0"
-    }
-    if "LJ" in enabled_metrics:
-        custom_llm_config = LLMConfig(model_name="deepseek-chat", url="https://api.deepseek.com")
-        custom_llm = GPT(custom_llm_config)
-        kwargs["LJ_api"] = custom_llm
+        resolved_file_name = resolve_file_name(path)
+        split = resolved_file_name.split
+        Dataset_name = resolved_file_name.dataset
+        data_chunk_size = resolved_file_name.chunk_size
+        retriever = resolved_file_name.retriever
+        reranker = resolved_file_name.reranker
+        top_k = resolved_file_name.top_k
+        wogt_rate = resolved_file_name.wogt_rate
+        generate_method = resolved_file_name.method
 
-    evaluator = Evaluator(metrics=enabled_metrics, **kwargs)
-    logger.info("Evaluator initialized.")
+        logger.info("Initializing the evaluator...")
+        kwargs = {
+            "BERT_path": "bert-base-uncased",
+            "device": "cuda:0"
+        }
+        if "LJ" in enabled_metrics:
+            custom_llm_config = LLMConfig(model_name="deepseek-chat", url="https://api.deepseek.com")
+            custom_llm = GPT(custom_llm_config)
+            kwargs["LJ_api"] = custom_llm
 
-    all_results = evaluator.evaluate(data)
-    organized_results = organize_evaluation_results(all_results)
+        evaluator = Evaluator(metrics=enabled_metrics, **kwargs)
+        logger.info("Evaluator initialized.")
 
-    with open(os.path.join(res_saving_path, f"{generate_method}_{wogt_rate}_{retriever}_{reranker}_{top_k}_{data_chunk_size}_all_results.json"), "w") as f:
-        json.dump(organized_results, f, indent=4)
+        all_results = evaluator.evaluate(data, num_examples)
+        organized_results = organize_evaluation_results(all_results)
+
+        save_path = os.path.join(
+            res_saving_path,
+            f"{generate_method}_{wogt_rate}_{retriever}_{reranker}_{top_k}_{data_chunk_size}_all_results.json"
+        )
+
+        if os.path.exists(save_path):
+            with open(save_path, "r") as f:
+                try:
+                    previous_results = json.load(f)
+                except Exception as e:
+                    logger.warning(f"Failed to load existing results json: {e}")
+                    previous_results = {}
+
+            merged_results = previous_results.copy()
+            def recursive_merge(prev, new, path=""):
+                out = prev.copy()
+                for k, v in new.items():
+                    cur_path = f"{path}.{k}" if path else k
+                    if k in out:
+                        if isinstance(out[k], dict) and isinstance(v, dict):
+                            out[k] = recursive_merge(out[k], v, cur_path)
+                        else:
+                            if out[k] != v:
+                                logger.warning(f"Value at {cur_path} changed: {out[k]} -> {v}")
+                            out[k] = v
+                    else:
+                        out[k] = v
+                return out
+
+            merged_results = recursive_merge(previous_results, organized_results)
+            organized_results = merged_results
+
+        with open(save_path, "w") as f:
+            json.dump(organized_results, f, indent=4)
