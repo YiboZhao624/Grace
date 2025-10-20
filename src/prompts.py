@@ -48,7 +48,7 @@ Please follow these rules carefully:
 """
         }
     ],
-    "few_shots":[
+    "few_shots_qasper":[
         {
             "role": "system",
             "content":"""**Instructions:**
@@ -199,6 +199,153 @@ Assistant's response must contain EXACTLY three sections if the references are r
 <references>
 {ref}
 </references>"""
+        }
+    ],
+    "few_shots_hotpot":[
+        {
+            "role": "system",
+            "content":"""**Instructions:**
+You are a helpful assistant. Your task is to answer the user's question based strictly and solely on the provided context.
+
+Please follow these rules carefully:
+1.  Your answer must be directly supported by the information within the "Context" section.
+2.  Do not use any external knowledge, personal opinions, or information not found in the text.
+3.  If the context does not contain enough information to answer the question, you must state: "Based on the provided context, I cannot answer this question."
+4.  Keep your answer concise and to the point."""
+        },
+        {
+            "role": "user",
+            "content":"""**Question:**
+Upper Denton is situated on the line of the Roman road that ran through the valleys of which two rivers?
+
+**Context:**
+Stanegate
+The Stanegate, or "stone road" (Old Norse), was an important Roman road built in what is now northern England. It linked two forts that guarded important river crossings; Corstopitum (Corbridge) in the east, situated on Dere Street, and Luguvalium (Carlisle) in the west. The Stanegate ran through the natural gap formed by the valleys of the Tyne and Irthing.
+
+Upper Denton
+Upper Denton is a small village and civil parish in the north of Cumbria, England about 1 km north of the A69 road linking Haltwhistle and Brampton. The population of the civil parish when taken at the Census 2011 was less than 100. Details are included in the parish of Nether Denton. The village is situated on the line of the Roman Stanegate which ran from Corbridge (Coria) to Carlisle (Luguvalium).
+"""
+        },
+        {
+        "role": "assistant",
+        "content":"Tyne and Irthing"
+    },
+    {
+            "role": "user",
+            "content":"""**Question:**
+In what year was the Enblish artist who released her second studio album Fall to Grace in 2012, born?
+
+**Context:**
+Fall to Grace
+Fall to Grace is the second studio album by English recording artist Paloma Faith. It was released by RCA Records on 28 May 2012.
+
+Paloma Faith
+Paloma Faith (born Paloma Faith Blomfield; 21 July 1981) is an English singer, songwriter and actress, known for her retro and eccentric style. Faith is the only British female artist other than Adele to have three platinum albums.
+"""
+        },
+        {
+        "role": "assistant",
+        "content":"21 July 1981"
+    },
+    {
+            "role": "user",
+            "content":"""**Question:**
+How many Tony Awards was the musical comedy on which Jonathan Tunick started working with Stephen Sondheim, nominated for ?
+
+**Context:**
+Stephen Flaherty
+Stephen Flaherty (born September 18, 1960) is an American composer of musical theatre. He works most often in collaboration with the lyricist/bookwriter Lynn Ahrens. They are best known for writing the Broadway musicals "Once on This Island", which was nominated for eight Tony Awards, "Seussical", which was nominated for the Grammy Award, and "Ragtime", which was nominated for twelve Tony Awards and won Best Original Score.
+
+Pamela Myers
+Pamela Myers (b. July 15, 1947 in Hamilton, Ohio) is an American actress who made her Broadway debut as Marta in Stephen Sondheim's musical "Company". For this role, in which she introduced the number, "Another Hundred People," she was nominated at the 1971 Tony awards for Best Performance by a Featured Actress in a Musical.
+"""
+        },
+        {
+        "role": "assistant",
+        "content":"I don't know."
+    },
+        {
+            "role": "user",
+            "content":"""**Question:**
+{question}
+
+**Context:**
+{ref}
+"""
+        }
+    ],
+    "TrustAlign_hotpotqa":[
+        {
+            "role": "system",
+            "content": " Write an accurate, engaging, and concise answer for the given question using only the provided search results (some of which might be irrelevant) and cite them properly. Use an unbiased and journalistic tone. Always cite for any factual claim. When citing several search results, use [1][2][3]. Cite at least one document and at most three documents in each statement. If multiple documents support the statement, only cite a minimum sufficient subset of the documents. If none of the provided documents contains the answer, only respond with ‘‘I don't know.’’ Do not add further explanation as to why an answer cannot be provided; just state the response above as-is."
+        },
+        {
+            "role": "user",
+            "content": """\
+Document [1]: Stanegate
+The Stanegate, or "stone road" (Old Norse), was an important Roman road built in what is now northern England. It linked two forts that guarded important river crossings; Corstopitum (Corbridge) in the east, situated on Dere Street, and Luguvalium (Carlisle) in the west. The Stanegate ran through the natural gap formed by the valleys of the Tyne and Irthing.
+
+Document [2]: Upper Denton
+Upper Denton is a small village and civil parish in the north of Cumbria, England about 1 km north of the A69 road linking Haltwhistle and Brampton. The population of the civil parish when taken at the Census 2011 was less than 100. Details are included in the parish of Nether Denton. The village is situated on the line of the Roman Stanegate which ran from Corbridge (Coria) to Carlisle (Luguvalium).
+
+Question: Upper Denton is situated on the line of the Roman road that ran through the valleys of which two rivers?
+            """
+        },
+        {
+            "role": "assistant",
+            "content": "Tyne and Irthing"
+        },
+        {
+            "role": "user",
+            "content": """\
+Document [1]: Fall to Grace
+Fall to Grace is the second studio album by English recording artist Paloma Faith. It was released by RCA Records on 28 May 2012.
+
+Document [2]: Paloma Faith
+Paloma Faith (born Paloma Faith Blomfield; 21 July 1981) is an English singer, songwriter and actress, known for her retro and eccentric style. Faith is the only British female artist other than Adele to have three platinum albums.
+
+Question: In what year was the Enblish artist who released her second studio album Fall to Grace in 2012, born?
+                """
+        },
+        {
+            "role": "assistant",
+            "content": "21 July 1981"
+        },
+        {
+            "role": "user",
+            "content": """\
+Document [1]: Stephen Flaherty
+Stephen Flaherty (born September 18, 1960) is an American composer of musical theatre. He works most often in collaboration with the lyricist/bookwriter Lynn Ahrens. They are best known for writing the Broadway musicals "Once on This Island", which was nominated for eight Tony Awards, "Seussical", which was nominated for the Grammy Award, and "Ragtime", which was nominated for twelve Tony Awards and won Best Original Score.
+
+Document [2]: Pamela Myers
+Pamela Myers (b. July 15, 1947 in Hamilton, Ohio) is an American actress who made her Broadway debut as Marta in Stephen Sondheim's musical "Company". For this role, in which she introduced the number, "Another Hundred People," she was nominated at the 1971 Tony awards for Best Performance by a Featured Actress in a Musical.
+
+Question: How many Tony Awards was the musical comedy on which Jonathan Tunick started working with Stephen Sondheim, nominated for ?
+                """
+        },
+        {
+            "role": "assistant",
+            "content": "I don't know."
+        },
+        {
+            "role": "user",
+            "content": """{ref}
+
+Question: {question}
+                """
+        }
+    ],
+    "TrustAlign_zero": [
+        {
+            "role": "system",
+            "content": " Write an accurate, engaging, and concise answer for the given question using only the provided search results (some of which might be irrelevant) and cite them properly. Use an unbiased and journalistic tone. Always cite for any factual claim. When citing several search results, use [1][2][3]. Cite at least one document and at most three documents in each statement. If multiple documents support the statement, only cite a minimum sufficient subset of the documents. If none of the provided documents contains the answer, only respond with ‘‘I don't know.’’ Do not add further explanation as to why an answer cannot be provided; just state the response above as-is."
+        },
+        {
+            "role": "user",
+            "content": """{ref}
+
+Question: {question}
+                """
         }
     ]
 }
