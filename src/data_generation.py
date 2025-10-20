@@ -294,6 +294,8 @@ class BaseDatasetGenerator:
         return [answer for answer in answers if answer]
 
     def manage_chunk_text_list_to_text(self, chunk_text_list: List[str]) -> str:
+        if self.config.prompt_template == "TrustAlign_hotpotqa":
+            return "\n\n".join(f"Document [{idx + 1}]: {text}" for idx, text in enumerate(chunk_text_list))
         if not self.config.number_template:
             return "\n\n".join(chunk_text_list)
         return "\n\n".join(f"{idx + 1}.{text}" for idx, text in enumerate(chunk_text_list))
