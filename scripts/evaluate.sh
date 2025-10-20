@@ -1,0 +1,1 @@
+CUDA_VISIBLE_DEVICES=2 python ../src/evaluator.py --path /root/projects/RAGRL/outputs/QASPER/deepseek-chat/test/512cs/QASPER-test-retriever-512cs-vllm_Qwen3-0.6B-None-top3-wogt05_deepseek-chat_inference.parquet
