@@ -4,11 +4,14 @@ from rouge_score import rouge_scorer
 from bert_score import score as bert_score_compute
 import torch
 import re
-import copy
+import json
 import string
 from tqdm import tqdm
 from custom_reward_v2 import val_reward_function
-from utils import setup_logging, extract_evidence_or_none, extract_answer_or_all
+from utils import setup_logging, extract_evidence_or_none, extract_answer_or_all,resolve_file_name, organize_evaluation_results, read_parquet
+from llm import vLLM, GPT
+from argparse import ArgumentParser
+from configs import LLMConfig
 
 logger = setup_logging("Evaluator")
 
@@ -142,7 +145,9 @@ class Evaluator:
     def _BLEU(self, answer: str, ground_truth:List[str]) -> float:
         return self._sentence_bleu(answer, ground_truth)
 
-    def _Exact_Match(self, answer: str, ground_truth: List[str]) -> int:
+    def _Exact_Match(self, answer: str, ground_truth: List[str], group_name: str = "retrieved_success") -> int:
+        if group_name == "gt_retrieved_fail":
+            ground_truth = ["I don't know.", "The provided evidence is not enough to answer the question.","I apologize, but I couldn't find an answer to your question in the search results."]
         total = 0
         for gt in ground_truth:
             if white_space_fix(remove_articles(handle_punc(lower(replace_underscore(answer))))).strip() == white_space_fix(remove_articles(handle_punc(lower(replace_underscore(gt))))).strip():
@@ -195,7 +200,7 @@ class Evaluator:
     
     def _LLM_Judge(self, answer: str, ground_truth: List[str], group_name: str) -> int:
         if group_name == "gt_retrieved_fail":
-            ground_truth = ["I don't know.", "The provided evidence is not enough to answer the question."]
+            ground_truth = ["I don't know.", "The provided evidence is not enough to answer the question.","I apologize, but I couldn't find an answer to your question in the search results."]
         LLM_Judge_prompt = '*************Consider a knowledge Q&A RAG task to test the capability of a testing model, the correct answer list is:*************\n' + "\n".join(ground_truth)
         LLM_Judge_prompt += '\n\n\n\n*************Here is the model\'s response:*************\n' + answer
         LLM_Judge_prompt += '\n\n\n\n*************Please check if the model\'s answer is correct. As long as the model\'s answer hits any item (or synonym) in the correct answer list, it can be considered correct. You only need to answer "yes" or "no".*************'
@@ -391,7 +396,7 @@ class Evaluator:
                 answer_results["BLEU-4"] = answer_results.get("BLEU-4",[]) + [self._BLEU(answers[i], ground_truths[i])]
                 evidence_results["BLEU-4"] = evidence_results.get("BLEU-4",[]) + [self._BLEU(chosen_evidences[i], ground_truth_evidences[i])]
             if "EM" in self.metrics:
-                answer_results["Exact Match"] = answer_results.get("Exact Match",[]) + [self._Exact_Match(answers[i], ground_truths[i])]
+                answer_results["Exact Match"] = answer_results.get("Exact Match",[]) + [self._Exact_Match(answers[i], ground_truths[i], group_name)]
                 evidence_results["Exact Match"] = evidence_results.get("Exact Match",[]) + [self._Exact_Match(chosen_evidences[i], ground_truth_evidences[i])]
             if "LJ" in self.metrics:
                 answer_results["LLM-as-a-Judge"] = answer_results.get("LLM-as-a-Judge",[]) + [self._LLM_Judge(answers[i], ground_truths[i], group_name)]
@@ -461,51 +466,46 @@ class Evaluator:
 
 
 if __name__ == '__main__':
-    # Mock API for LLM-as-a-Judge for demonstration purposes
-    class MockLLMAPI:
-        def generate(self, prompt):
-            return "yes"
+    parser = ArgumentParser()
+    parser.add_argument("--path", type=str)
+    args = parser.parse_args()
+    
+    path = args.path
 
-    # Define which metrics to use
-    enabled_metrics: List[Evaluator.METRICS_LITERAL] = ["RL", "BL", "EM", "BS", "LJ"]
+    data = read_parquet(path)
 
-    # Initialize the evaluator
+    logger = setup_logging("Evaluator")
+
+    os.environ['TRANSFORMERS_CACHE'] = "/root/.cache/huggingface/hub/"
+
+    res_saving_path = "/".join(path.split("/")[:-1])
+
+    resolved_file_name = resolve_file_name(path)
+    split = resolved_file_name.split
+    Dataset_name = resolved_file_name.dataset
+    data_chunk_size = resolved_file_name.chunk_size
+    retriever = resolved_file_name.retriever
+    reranker = resolved_file_name.reranker
+    top_k = resolved_file_name.top_k
+    wogt_rate = resolved_file_name.wogt_rate
+    generate_method = resolved_file_name.method
+
+    logger.info("Initializing the evaluator...")
+    enabled_metrics = ["BS","EM","RL","BL","RR"]
     kwargs = {
-        "LJ_api": MockLLMAPI(),
         "BERT_path": "bert-base-uncased",
         "device": "cuda:0"
     }
+    if "LJ" in enabled_metrics:
+        custom_llm_config = LLMConfig(model_name="deepseek-chat", url="https://api.deepseek.com")
+        custom_llm = GPT(custom_llm_config)
+        kwargs["LJ_api"] = custom_llm
 
     evaluator = Evaluator(metrics=enabled_metrics, **kwargs)
+    logger.info("Evaluator initialized.")
 
-    # Prepare BATCH data (e.g., 3 samples)
-    candidate_answers = [
-        "The Eiffel Tower is located in Paris, France.",
-        "The capital of Japan is Tokyo.",
-        "The earth is flat.",
-        "The capital of China is Beijing.",
-        "Jackie Chan"
-    ]
-    ground_truth_answers = [
-        ["The Eiffel Tower is in Paris.", "Paris is the location of the Eiffel Tower."],
-        ["Tokyo is the capital city of Japan."],
-        ["The world is a sphere.", "The earth is round."],
-        ["The capital of China is Beijing."],
-        ["Green Table."]
-    ]
+    all_results = evaluator.evaluate(data)
+    organized_results = organize_evaluation_results(all_results)
 
-    # Run the evaluation on the entire batch
-    final_scores_batch = evaluator.evaluate(
-        candidate_answers, 
-        ground_truth_answers
-    )
-
-    # Print the results for each sample in the batch
-    logger.info("\n\n--- Batch Evaluation Results ---")
-    for i, scores in enumerate(final_scores_batch):
-        logger.info(f"\n--- Sample {i+1}: '{candidate_answers[i]}' ---")
-        for metric, score in scores.items():
-            if isinstance(score, float):
-                logger.info(f"  {metric:<15}: {score:.4f}")
-            else:
-                logger.info(f"  {metric:<15}: {score}")
+    with open(os.path.join(res_saving_path, f"{generate_method}_{wogt_rate}_{retriever}_{reranker}_{top_k}_{data_chunk_size}_all_results.json"), "w") as f:
+        json.dump(organized_results, f, indent=4)
