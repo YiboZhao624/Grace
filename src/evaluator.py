@@ -522,6 +522,7 @@ if __name__ == '__main__':
             f"{generate_method}_{wogt_rate}_{retriever}_{reranker}_{top_k}_{data_chunk_size}_all_results.json"
         )
 
+        diff = False
         if os.path.exists(save_path):
             with open(save_path, "r") as f:
                 try:
@@ -541,6 +542,7 @@ if __name__ == '__main__':
                         else:
                             if out[k] != v:
                                 logger.warning(f"Value at {cur_path} changed: {out[k]} -> {v}")
+                                diff = True
                             out[k] = v
                     else:
                         out[k] = v
@@ -549,5 +551,12 @@ if __name__ == '__main__':
             merged_results = recursive_merge(previous_results, organized_results)
             organized_results = merged_results
 
-        with open(save_path, "w") as f:
-            json.dump(organized_results, f, indent=4)
+        if not diff:
+            with open(save_path, "w") as f:
+                json.dump(organized_results, f, indent=4)
+        else:
+            save_path = save_path.replace(".json", "_diff.json")
+            with open(save_path, "w") as f:
+                json.dump(organized_results, f, indent=4)
+            logger.info(f"The results are different from the previous results. The diff is saved to {save_path}")
+            logger.info(f"Please check the diff and merge the results manually.")
