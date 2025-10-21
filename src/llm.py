@@ -13,7 +13,7 @@ import os
 import openai
 from openai import OpenAI
 from utils import setup_logging
-from typing import Union
+from typing import Union, List
 import vllm
 
 logger = setup_logging("LLM")
@@ -31,7 +31,7 @@ class vLLM(LLM):
         self.base_url = config.url
         self.model_name = config.model_name
 
-    def generate(self, user_input:Union[dict, str], sys_prompt:Union[dict, str] = None) -> str:
+    def generate(self, user_input:Union[dict, str, List[dict]], sys_prompt:Union[dict, str] = None) -> str:
         url = f"{self.base_url}/v1/chat/completions"
         headers = {"Content-Type": "application/json"}
         messages = []
@@ -43,6 +43,8 @@ class vLLM(LLM):
             messages.append(user_input)
         elif isinstance(user_input, str):
             messages.append({"role": "user", "content": user_input})
+        elif isinstance(user_input, list) and all(isinstance(item, dict) for item in user_input):
+            messages.extend(user_input)
         else:
             raise ValueError(f"Invalid user input type: {type(user_input)}")
         data = {
@@ -81,7 +83,7 @@ class offlinevLLM(LLM):
             top_p=config.top_p,
             max_tokens=config.max_tokens
         )
-    def generate(self, user_input: Union[dict, str], sys_prompt: Union[dict, str] = None) -> str:
+    def generate(self, user_input: Union[dict, str, List[dict]], sys_prompt: Union[dict, str] = None) -> str:
         messages = []
         if isinstance(sys_prompt, dict):
             messages.append(sys_prompt)
@@ -92,6 +94,8 @@ class offlinevLLM(LLM):
             messages.append(user_input)
         elif isinstance(user_input, str):
             messages.append({"role": "user", "content": user_input})
+        elif isinstance(user_input, list) and all(isinstance(item, dict) for item in user_input):
+            messages.extend(user_input)
         else:
             raise ValueError(f"Invalid user input type: {type(user_input)}")
 
@@ -124,7 +128,7 @@ class GPT(LLM):
         self.model_name = config.model_name
         self.client = OpenAI(base_url=config.url)
 
-    def generate(self, user_input:Union[dict, str], sys_prompt:Union[dict, str] = None, **kwargs) -> str:
+    def generate(self, user_input:Union[dict, str, List[dict]], sys_prompt:Union[dict, str] = None, **kwargs) -> str:
         messages = []
         if isinstance(sys_prompt, dict):
             messages.append(sys_prompt)
@@ -134,6 +138,8 @@ class GPT(LLM):
             messages.append(user_input)
         elif isinstance(user_input, str):
             messages.append({"role": "user", "content": user_input})
+        elif isinstance(user_input, list) and all(isinstance(item, dict) for item in user_input):
+            messages.extend(user_input)
         else:
             raise ValueError(f"Invalid user input type: {type(user_input)}")
         response = self.client.chat.completions.create(
