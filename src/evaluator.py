@@ -279,8 +279,10 @@ class Evaluator:
 
         # 1. extract the data needed for evaluation from the entry list
         full_answers = [e["answer"] for e in entries]
-        chosen_evidences = [extract_evidence_or_none(e["answer"]) for e in entries]
-        answers = [extract_answer_or_all(e["answer"]) for e in entries]
+        # maybe remove the think tag.
+        non_think_answers = [e.split("</think>")[-1].strip() for e in full_answers]
+        chosen_evidences = [extract_evidence_or_none(e) for e in non_think_answers]
+        answers = [extract_answer_or_all(e) for e in non_think_answers]
         
         ground_truths = []
         ground_truth_evidences = []
