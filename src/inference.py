@@ -44,7 +44,7 @@ def inference(data: List[Dict], resume: int = 0):
             user_input = item["prompt"][1]
         else:
             sys_prompt = item["prompt"][0]
-            user_input = item["prompt"][1:]
+            user_input = list(item["prompt"][1:])
         answer = custom_llm.generate(user_input, sys_prompt)
         if answer == "ERROR: THE MODEL CANNOT PROCESS THE REQUEST.":
             logger.error(f"Fail to process the input, the user input is {user_input}, the sys prompt is {sys_prompt}")
