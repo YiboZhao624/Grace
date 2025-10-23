@@ -142,13 +142,18 @@ class GPT(LLM):
             messages.extend(user_input)
         else:
             raise ValueError(f"Invalid user input type: {type(user_input)}")
-        response = self.client.chat.completions.create(
-            model=self.model_name,
-            messages=messages,
-            temperature=kwargs.get("temperature", 0.8), # serving as LLM as the judge
-            max_tokens=kwargs.get("max_tokens", 1024), # serving as LLM as the judge
-            stream=False
-        )
+        try:
+            response = self.client.chat.completions.create(
+                model=self.model_name,
+                messages=messages,
+                temperature=kwargs.get("temperature", 0.8),
+                max_tokens=kwargs.get("max_tokens", 1024),
+                stream=False
+            )
+        except Exception as e:
+            status_code = getattr(e, "status_code", "unknown")
+            logger.warning(f"API request failed with status code {status_code}: {e}", exc_info=True)
+            return ""
         # logger.info(f"Response tokens: {response.usage.completion_tokens}\nPrompt tokens: {response.usage.prompt_tokens}")
         return response.choices[0].message.content
 
