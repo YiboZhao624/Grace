@@ -561,7 +561,7 @@ class RetrieverDataGenerator(BaseDatasetGenerator):
             ]
         else:
             entry["extra_info"]["generation_type"] = "retrieved"
-            top_ids = retrieved_ids
+            top_ids = retrieved_ids[:self.config.top_k]
             entry["extra_info"]["evidence_chunk_ids"] = top_ids
             entry["extra_info"]["distractor_chunk_ids"] = [idx for idx in top_ids if idx not in gt_evidence_ids]
             entry["extra_info"]["gt_evidence_chunk_ids"] = gt_evidence_ids
