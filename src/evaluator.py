@@ -14,6 +14,7 @@ from argparse import ArgumentParser
 from configs import LLMConfig
 
 logger = setup_logging("Evaluator")
+os.environ['TRANSFORMERS_CACHE'] = "/root/.cache/huggingface/hub/"
 
 def remove_articles(text):
     return re.sub(r'\b(a|an|the)\b', ' ', text)
@@ -278,7 +279,16 @@ class Evaluator:
             return {}, {}, {}
 
         # 1. extract the data needed for evaluation from the entry list
-        full_answers = [e["answer"] for e in entries]
+        try:
+            full_answers = [e["answer"] for e in entries]
+        except KeyError:
+            logger.error(f"the entry keys are: {entries[0].keys()}")
+            raise
+        count = 0
+        for e in full_answers:
+            if not isinstance(e, str):
+                count += 1
+        logger.info(f"the number of non-string answers is: {count}")
         # maybe remove the think tag.
         non_think_answers = [e.split("</think>")[-1].strip() for e in full_answers]
         chosen_evidences = [extract_evidence_or_none(e) for e in non_think_answers]
