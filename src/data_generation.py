@@ -532,13 +532,14 @@ class RetrieverDataGenerator(BaseDatasetGenerator):
         gt_evidence_text: List[str],
         entry: Dict,
         split: str,
+        answer_balance: bool = True
     ) -> Tuple[List[str], Dict]:
         assert self.retriever is not None
         top_k_for_gt = self._effective_top_k(gt_evidence_ids)
         retrieve_k = max(self.config.top_k + 3, top_k_for_gt)
         evidence_texts, retriever_res = self.retriever.retrieve(qa_data["question"], retrieve_k)
         retrieved_ids = [idx for idx, _ in retriever_res][: len(self.paper_data[split][qa_data["paper_id"]]["chunks"])]
-        if split == "train":
+        if split == "train" and answer_balance:
             entry["reward_model"]["ground_truth"]["gt_evidence_retrieved"] = None
             if not qa_data.get("gt_evidence", True):
                 entry["extra_info"]["generation_type"] = "wo_gt_evidence"
@@ -558,6 +559,29 @@ class RetrieverDataGenerator(BaseDatasetGenerator):
             evidence_chunks = [
                 self.paper_data[split][qa_data["paper_id"]]["chunks"][chunk_idx]
                 for chunk_idx in entry["extra_info"]["evidence_chunk_ids"]
+            ]
+        elif split == "train" and not answer_balance:
+            entry["reward_model"]["ground_truth"]["gt_evidence_retrieved"] = None
+            top_ids = retrieved_ids[:self.config.top_k]
+            entry["extra_info"]["evidence_chunk_ids"] = top_ids
+            entry["extra_info"]["distractor_chunk_ids"] = [idx for idx in top_ids if idx not in gt_evidence_ids]
+            entry["extra_info"]["gt_evidence_chunk_ids"] = gt_evidence_ids
+            entry["reward_model"]["ground_truth"]["gt_evidence"] = gt_evidence_text
+            if self._requires_full_gt_coverage() and gt_evidence_ids:
+                is_retrieved_gt_evidence = all(
+                    evidence_id in top_ids for evidence_id in gt_evidence_ids
+                )
+            else:
+                is_retrieved_gt_evidence = any(
+                    evidence_id in top_ids for evidence_id in gt_evidence_ids
+                )
+            if is_retrieved_gt_evidence:
+                entry["reward_model"]["ground_truth"]["gt_evidence"] = gt_evidence_text
+            else:
+                entry["reward_model"]["ground_truth"]["gt_evidence"] = [""]
+            evidence_chunks = [
+                self.paper_data[split][qa_data["paper_id"]]["chunks"][chunk_idx]
+                for chunk_idx in top_ids
             ]
         else:
             entry["extra_info"]["generation_type"] = "retrieved"
@@ -633,19 +657,22 @@ class RetrieverRerankerDataGenerator(BaseDatasetGenerator):
         gt_evidence_text: List[str],
         entry: Dict,
         split: str,
+        answer_balance: bool = True
     ) -> Tuple[List[str], Dict]:
         assert self.retriever is not None and self.reranker is not None
         top_k_for_gt = self._effective_top_k(gt_evidence_ids)
         retrieve_k = max(self.config.top_k + 5, top_k_for_gt)
         evidence_texts, retriever_res = self.retriever.retrieve(qa_data["question"], retrieve_k)
         retrieved_ids = [idx for idx, _ in retriever_res]
-        if split == "train":
+        if split == "train" and answer_balance:
             candidate_ids = merge_by_reverse_removal(retrieved_ids, gt_evidence_ids)
             candidate_ids = self._merge_candidate_with_gt(
                 candidate_ids,
                 gt_evidence_ids,
                 max(retrieve_k, top_k_for_gt),
             )
+        elif split == "train" and not answer_balance:
+            candidate_ids = retrieved_ids[:self.config.top_k]
         else:
             seen_ids: Set[int] = set()
             candidate_ids = []
@@ -672,7 +699,7 @@ class RetrieverRerankerDataGenerator(BaseDatasetGenerator):
         reranked_index, reranked_evidence = self.reranker.rerank(candidate_chunks, qa_data["question"])
         reranked_ids = [valid_candidate_ids[idx] for idx in reranked_index]
         self.logger.debug("Reranked chunk ids: %s", reranked_ids)
-        if split == "train":
+        if split == "train" and answer_balance:
             entry["reward_model"]["ground_truth"]["gt_evidence_retrieved"] = None
             if not qa_data.get("gt_evidence", True):
                 entry["extra_info"]["generation_type"] = "wo_gt_evidence"
@@ -691,6 +718,37 @@ class RetrieverRerankerDataGenerator(BaseDatasetGenerator):
             evidence_chunks = [
                 self.paper_data[split][qa_data["paper_id"]]["chunks"][chunk_idx]
                 for chunk_idx in entry["extra_info"]["evidence_chunk_ids"]
+            ]
+        elif split == "train" and not answer_balance:
+            entry["reward_model"]["ground_truth"]["gt_evidence_retrieved"] = None
+            seen: Set[int] = set()
+            top_ids: List[int] = []
+            for idx in reranked_ids:
+                if idx in seen:
+                    continue
+                top_ids.append(idx)
+                seen.add(idx)
+                if top_k_for_gt > 0 and len(top_ids) >= top_k_for_gt:
+                    break
+            entry["extra_info"]["evidence_chunk_ids"] = top_ids
+            entry["extra_info"]["distractor_chunk_ids"] = [idx for idx in top_ids if idx not in gt_evidence_ids]
+            entry["extra_info"]["gt_evidence_chunk_ids"] = gt_evidence_ids
+            # entry["reward_model"]["ground_truth"]["gt_evidence"] = gt_evidence_text
+            if self._requires_full_gt_coverage() and gt_evidence_ids:
+                is_retrieved_gt_evidence = all(
+                    evidence_id in top_ids for evidence_id in gt_evidence_ids
+                )
+            else:
+                is_retrieved_gt_evidence = any(
+                    evidence_id in top_ids for evidence_id in gt_evidence_ids
+                )
+            if is_retrieved_gt_evidence:
+                entry["reward_model"]["ground_truth"]["gt_evidence"] = gt_evidence_text
+            else:
+                entry["reward_model"]["ground_truth"]["gt_evidence"] = [""]
+            evidence_chunks = [
+                self.paper_data[split][qa_data["paper_id"]]["chunks"][chunk_idx]
+                for chunk_idx in top_ids
             ]
         else:
             entry["extra_info"]["generation_type"] = "retrieved"
