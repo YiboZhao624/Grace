@@ -160,10 +160,12 @@ def reward_function(data,gt_evidences:List[str], gt_answers:List[str])->dict:
         evidence_r = max(evidence_r, rouge_l_reward(evidence_text, gt_evidences, reward_multiplier=2.0))
         total_reward += evidence_r
         total_reward += answer_r
-        answer_length_punish = length_penalty(answer_text, gt_answers)
-        total_reward += answer_length_punish
-        evidence_length_punish = length_penalty(evidence_text, gt_evidences)
-        total_reward += evidence_length_punish
+        answer_length_punish = 0
+        evidence_length_punish = 0
+        # answer_length_punish = length_penalty(answer_text, gt_answers)
+        # total_reward += answer_length_punish
+        # evidence_length_punish = length_penalty(evidence_text, gt_evidences)
+        # total_reward += evidence_length_punish
         return {"score": total_reward, "choice": choice_report, "choice_r": choice_r, "evidence": evidence_r, "answer": answer_r, "format": format_r, "alp": answer_length_punish, "elp": evidence_length_punish}
     elif choice == "<llm>":
         total_reward += answer_r
@@ -197,10 +199,12 @@ def val_reward_function(data,gt_evidences:List[str], gt_answers:List[str], gt_ev
         evidence_r = max(evidence_r, rouge_l_reward(evidence_text, gt_evidences, reward_multiplier=1.0))
         total_reward += evidence_r
         total_reward += answer_r
-        alp = length_penalty(answer_text, gt_answers)
-        total_reward += alp
-        elp = length_penalty(evidence_text, gt_evidences)
-        total_reward += elp
+        alp = 0
+        # alp = length_penalty(answer_text, gt_answers)
+        # total_reward += alp
+        elp = 0
+        # elp = length_penalty(evidence_text, gt_evidences)
+        # total_reward += elp
         return {"score": total_reward, "choice": choice, "choice_r": choice_r, "evidence": evidence_r, "answer": answer_r, "format": format_r, "alp": alp, "elp": elp}
     elif choice == "<llm>":
         choice = 1
