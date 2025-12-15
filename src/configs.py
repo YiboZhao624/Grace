@@ -113,6 +113,7 @@ class DataGeneratorConfig:
     number_template: bool = False
     recall_threshold: float = 0.5
     precision_threshold: float = 0.5
+    answer_balance: bool = True
 
 
 @dataclass

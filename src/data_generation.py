@@ -435,7 +435,7 @@ class BaseDatasetGenerator:
             len(sampled),
         )
 
-    def generate_for_split(self, split: str) -> List[Dict]:
+    def generate_for_split(self, split: str, answer_balance: bool = True) -> List[Dict]:
         qa_list = self.QA_data.get(split, [])
         if not qa_list:
             self.logger.warning("No QA data found for split '%s' in dataset '%s'", split, self.dataset_key)
@@ -451,7 +451,7 @@ class BaseDatasetGenerator:
             entry = self._prepare_entry_metadata(qa_data, split)
             gt_evidence_ids, gt_evidence_text = self._get_gt_evidence(qa_data, split)
             entry["reward_model"]["ground_truth"]["answer"] = self._get_gt_answer(qa_data)
-            evidence_chunks, entry = self.organize_evidence(qa_data, gt_evidence_ids, gt_evidence_text, entry, split)
+            evidence_chunks, entry = self.organize_evidence(qa_data, gt_evidence_ids, gt_evidence_text, entry, split, answer_balance)
             evidence_input = self.manage_chunk_text_list_to_text(evidence_chunks)
             prompt_template = copy.deepcopy(Prompt_templates[self.config.prompt_template])
             prompt_template[-1]["content"] = (
@@ -466,7 +466,7 @@ class BaseDatasetGenerator:
     def generate_data_for_splits(self) -> Dict[str, List[Dict]]:
         results: Dict[str, List[Dict]] = {}
         for split in self._normalize_splits(self.config.split):
-            results[f"{split}_{self.config.method}"] = self.generate_for_split(split)
+            results[f"{split}_{self.config.method}"] = self.generate_for_split(split, answer_balance=self.config.answer_balance)
         return results
 
     def organize_evidence(
