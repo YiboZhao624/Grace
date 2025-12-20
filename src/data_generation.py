@@ -616,6 +616,7 @@ class OracleDataGenerator(BaseDatasetGenerator):
         gt_evidence_text: List[str],
         entry: Dict,
         split: str,
+        answer_balance: bool = False
     ) -> Tuple[List[str], Dict]:
         entry["extra_info"]["generation_type"] = "gt_evidence"
         entry["extra_info"]["gt_evidence_chunk_ids"] = gt_evidence_ids
