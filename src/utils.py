@@ -167,10 +167,6 @@ class HotpotDatasetLoader(MetadataBackedDatasetLoader):
     dataset_name = "HotpotQA"
 
 
-class TwoWikiDatasetLoader(MetadataBackedDatasetLoader):
-    dataset_name = "2WikiMultiHopQA"
-
-
 def load_raw_qasper_data(data_folder: str, split: Union[List[str], str] = "train"):
     return QasperDatasetLoader(data_folder, split).load()
 
@@ -178,9 +174,6 @@ def load_raw_qasper_data(data_folder: str, split: Union[List[str], str] = "train
 def load_hotpotqa_data(data_folder: str, split: Union[List[str], str] = "train"):
     return HotpotDatasetLoader(data_folder, split).load()
 
-
-def load_two_wiki_data(data_folder: str, split: Union[List[str], str] = "train"):
-    return TwoWikiDatasetLoader(data_folder, split).load()
 
 def save_parquet(data: List[Dict], path: str):
     df = pd.DataFrame(data)
@@ -231,7 +224,6 @@ DATASET_TO_SPLIT_LIST: Dict[str, List[str]] = {
     "nq": ["train", "validation"],
     "triviaqa": ["train", "validation"],
     "hotpotqa": ["train", "dev"],
-    "two_wiki": ["train", "dev"],
     "popqa": ["test"],
     "webqa": ["train", "test"],
     "musique": ["train", "dev"],

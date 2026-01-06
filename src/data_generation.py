@@ -60,7 +60,6 @@ from tqdm import tqdm
 from utils import (
     load_raw_qasper_data,
     load_hotpotqa_data,
-    load_two_wiki_data,
     merge_by_reverse_removal,
 )
 from prompts import Prompt_templates
@@ -128,8 +127,6 @@ def _load_dataset_for_generator(
         return load_raw_qasper_data(data_folder, split)
     if dataset == "hotpotqa":
         return load_hotpotqa_data(data_folder, split)
-    if dataset in {"2wiki", "2wikimultihop", "2wikimultihopqa"}:
-        return load_two_wiki_data(data_folder, split)
     raise ValueError(f"Unsupported dataset '{dataset}' for data generation")
 
 
@@ -301,12 +298,12 @@ class BaseDatasetGenerator:
         return "\n\n".join(f"{idx + 1}.{text}" for idx, text in enumerate(chunk_text_list))
 
     def _requires_full_gt_coverage(self) -> bool:
-        return self.dataset_key in {"hotpotqa", "2wikimultihop"}
+        return self.dataset_key in {"hotpotqa"}
 
     def _effective_top_k(self, gt_evidence_ids: List[int]) -> int:
         '''
         For QASPER, it is the original top_k, as any gt evidence is enough to support the answer.
-        For the HotpotQA and 2WikiMultihop, it is the max of the original top_k and the number of unique gt evidence ids. As we need all of the gt evidence ids to support the answer.
+        For the HotpotQA, it is the max of the original top_k and the number of unique gt evidence ids. As we need all of the gt evidence ids to support the answer.
         '''
         if not gt_evidence_ids:
             return self.config.top_k
@@ -507,13 +504,6 @@ class QasperDatasetMixin:
 
 class HotpotDatasetMixin:
     DATASET_KEY = "hotpotqa"
-
-    def ensure_full_text(self) -> None:  # type: ignore[override]
-        super().ensure_full_text()
-
-
-class TwoWikiDatasetMixin:
-    DATASET_KEY = "2wikimultihop"
 
     def ensure_full_text(self) -> None:  # type: ignore[override]
         super().ensure_full_text()
@@ -807,22 +797,9 @@ class HotpotRetrieverRerankerDataGenerator(HotpotDatasetMixin, RetrieverReranker
     pass
 
 
-class TwoWikiRetrieverDataGenerator(TwoWikiDatasetMixin, RetrieverDataGenerator):
-    pass
-
-
-class TwoWikiOracleDataGenerator(TwoWikiDatasetMixin, OracleDataGenerator):
-    pass
-
-
-class TwoWikiRetrieverRerankerDataGenerator(TwoWikiDatasetMixin, RetrieverRerankerDataGenerator):
-    pass
-
 
 def _canonical_dataset_key(dataset: str) -> str:
     key = dataset.lower()
-    if key in {"2wikimultihop", "2wikimultihopqa", "2wiki"}:
-        return "2wikimultihop"
     return key
 
 
@@ -840,10 +817,6 @@ def get_data_generator(config: DataGeneratorConfig):
         ("hotpotqa", "random"): HotpotRetrieverDataGenerator,
         ("hotpotqa", "oracle"): HotpotOracleDataGenerator,
         ("hotpotqa", "retriever_reranker"): HotpotRetrieverRerankerDataGenerator,
-        ("2wikimultihop", "retriever"): TwoWikiRetrieverDataGenerator,
-        ("2wikimultihop", "random"): TwoWikiRetrieverDataGenerator,
-        ("2wikimultihop", "oracle"): TwoWikiOracleDataGenerator,
-        ("2wikimultihop", "retriever_reranker"): TwoWikiRetrieverRerankerDataGenerator,
     }
 
     key = (dataset_key, method)
