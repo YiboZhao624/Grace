@@ -92,25 +92,11 @@ def download_hotpotqa(root_dir: Path) -> None:
     logger.info("HotpotQA download completed.")
 
 
-def download_two_wiki(root_dir: Path) -> None:
-    two_wiki_dir = root_dir / "2wikimultihop"
-    two_wiki_dir.mkdir(parents=True, exist_ok=True)
-
-    zip_url = "https://www.dropbox.com/s/npidmtadreo6df2/data.zip?dl=1"
-    archive_path = two_wiki_dir / "data.zip"
-
-    download_file(zip_url, archive_path)
-    extract_zip(archive_path, two_wiki_dir)
-    archive_path.unlink(missing_ok=True)
-
-    logger.info("2WikiMultiHopQA download and extraction completed.")
-
-
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Download and extract QA datasets.")
     parser.add_argument(
         "--dataset",
-        choices=["qasper", "hotpotqa", "2wiki", "all"],
+        choices=["qasper", "hotpotqa", "all"],
         default="all",
         help="Which dataset to download.",
     )
@@ -132,9 +118,6 @@ def main() -> None:
 
     if args.dataset in {"hotpotqa", "all"}:
         download_hotpotqa(root_dir)
-
-    if args.dataset in {"2wiki", "all"}:
-        download_two_wiki(root_dir)
 
 
 if __name__ == "__main__":
