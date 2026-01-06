@@ -148,7 +148,7 @@ class Evaluator:
 
     def _Exact_Match(self, answer: str, ground_truth: List[str], group_name: str = "retrieved_success") -> int:
         if group_name == "gt_retrieved_fail":
-            ground_truth = ["I don't know.", "The provided evidence is not enough to answer the question.","I apologize, but I couldn't find an answer to your question in the search results."]
+            ground_truth = ["I don't know.", "The provided evidence is not enough to answer the question.","I apologize, but I couldn't find an answer to your question in the search results.", "Based on the provided context, I cannot answer this question."]
         total = 0
         for gt in ground_truth:
             if white_space_fix(remove_articles(handle_punc(lower(replace_underscore(answer))))).strip() == white_space_fix(remove_articles(handle_punc(lower(replace_underscore(gt))))).strip():
