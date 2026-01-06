@@ -1,4 +1,17 @@
-# TReSAGe: Transparent Retrieval and Self-knowledge Augmented Generation.
+# GRACE: Reinforcement Learning for Grounded Response and Abstention under Contextual Evidence
+
+This repository contains the official implementation of GRACE, a reinforcement-learning-based framework for training large language models to produce grounded responses and to abstain appropriately when contextual evidence is insufficient.
+
+## Project Structure
+
+```
+├── data/                # Raw and preprocessed datasets, default empty
+├── src/                 # Core implementation
+├── scripts/             # Reproduction scripts
+├── vllm/                # vLLM server launch scripts
+├── requirements.txt     # Requirements for the project
+└── README.md            # This file
+```
 
 ## Usage
 
@@ -7,8 +20,8 @@ We recommend using a clean Conda environment. Our experiments were conducted wit
 ### Create Conda Environment
 
 ```
-conda create -n tresage python=3.12
-conda activate tresage
+conda create -n GRACE python=3.12
+conda activate GRACE
 ```
 
 ### Install Dependencies
@@ -19,27 +32,39 @@ To install the dependencies, please run the following command:
 pip install -r requirements.txt
 ```
 
-Then, please follow the instruction of [verl](https://verl.readthedocs.io/en/latest/start/install.html) to prepare the dependencies of verl. Finally, run the instruction below to install the verl in this repo:
+This command only install the extra packages we need except the verl and its dependencies.
+
+Then, please follow the instruction of [verl](https://verl.readthedocs.io/en/latest/start/install.html) to prepare the dependencies of verl. Finally, clone the verl and install the verl with the following command:
 
 ```
+git clone https://github.com/volcengine/verl
 cd verl
+git checkout 4aa02fe1663d8048b9c204345b2abe5197870df3
 pip install --no-deps -e .
 ```
 
-We kindly note that we basically did not change the code in verl, but add several lines in `verl/recipe/dapo/dapo_ray_trainer.py` to monitor the training process following this [issue](https://github.com/volcengine/verl/issues/2279). You can also use the latest version of verl to run our experiments.
+We kindly note that we basically did not change the code in verl, but add several lines in `verl/recipe/dapo/dapo_ray_trainer.py` to monitor the training process following this [issue](https://github.com/volcengine/verl/issues/2279).
 
 
-### Download Datasets 
+### Prepare Data
 
-We use the open-sourced open-domain datasets including `2wikimultihop`, `hotpotQA`, `musique`, and open-sourced specific domain datasets `qasper` and `peerqa`. To download the datasets, please refer to the `./data/README.md` for more details.
+We use the open-sourced open-domain datasets `HotpotQA`, and open-sourced specific domain datasets `qasper`.
 
-### Data preprocessing
+- **Download raw datasets**: `scripts/prepare_datasets.sh` downloads QASPER and HotpotQA into `./data/` by default. Override the target folder by modifying the `DATA_ROOT` variable in the script.
+- **Preprocess into unified format**: `scripts/preprocess.sh` runs `src/preprocess.py` so that QASPER and HotpotQA all emit `QA_data.json` and `paper_data.json` (when available) under split-specific subfolders.
 
-We provide the `preprocess.py`. Please run `python preprocess.py` to preprocess the datasets.
+Example usage:
+
+```
+DATA_ROOT=/absolute/path/to/data ./scripts/prepare_datasets.sh
+DATA_ROOT=/absolute/path/to/data ./scripts/preprocess.sh
+```
 
 ### Data Generation
 
-We provide the `data_generation.py`, which includes a few kinds of data generators. If you want to implement more kinds of datagenerator, just inherit the `QASPERDataGenerator` class and implement the `organize_evidence` method. To reproduce our data generation process, please run the `main.py`. It will generate all the data used in experiments.
+We provide the `data_generation.py`, which includes a few kinds of data generators. If you want to implement more kinds of datagenerator, just inherit the `BaseDatasetGenerator` class. 
+
+To reproduce our data generation process, please first start the vLLM server with the scripts in `./vllm`, and then run the `bash main.sh` under `./scripts` to generate all the data listed in the responding config files.
 
 ### Training
 
@@ -57,20 +82,6 @@ For evaluation, we provide the `evaluator.py`, which includes the class Evaluato
 
 3. BERT Score: We implement it with the official package `bert_score` by Huggingface using the `bert-base-uncased` model.
 
-4. LLM-as-a-Judge: We directly use the prompt provided by the [ARENA paper](https://arxiv.org/pdf/2505.13258), and we use the openai package to call the GPT-4o-mini API as the judge.
+4. LLM-as-a-Judge: We directly use the prompt provided by the [ARENA paper](https://arxiv.org/pdf/2505.13258), and we call the DeepSeek API as the judge.
 
-You can deploy the vllm server with the trained LoRA adapter, and then leverage the `inference.py` script to inference and evaluate the model. Please note that the evaluation process requires an active internet connection.
-
-## Contribution Handing
-
-If you are interested in this project and want to contribute, there will be a few aspects you can contribute to:
-
-1. Documentation: We are still working on the documentation of the project. If you are interested in this project and want to contribute, you can help us improve the documentation.
-
-2. Test Code: You can provide the test code for the project.
-
-3. New Feature: If you want to add new features to the project, just implement the new feature and add the corresponding test code to faciliate our code review.
-
-4. Bug Fix: If you find any bugs in the project, please report them to us.
-
-If you want to contribute, feel free to start a pull request. We will reply and review your pull request as soon as possible.
+You can deploy the vllm server with the trained model, and then leverage the `inference.py` script to inference and evaluate the model. Please note that the evaluation process requires an active internet connection. It is possible that due to the unstable internet connection, the evaluation process may fail. In this case, you can manually start the evaluation process by running the `bash run_evaluate.sh` under the `./script` folder.
