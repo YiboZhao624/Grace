@@ -1,31 +1,7 @@
 from rouge_score import rouge_scorer
-import string
-
 
 scorer = rouge_scorer.RougeScorer(['rougeL'], use_stemmer=True)
 
-# _STOPWORDS = {
-#     "am",
-#     "is",
-#     "are",
-#     "was",
-#     "were",
-#     "the",
-#     "a",
-#     "an",
-# }
-
-
-# def text_normalize(text: str) -> str:
-#     """Lowercase, remove punctuation, and strip common stopwords."""
-#     if not text:
-#         return ""
-
-#     text = text.lower()
-#     text = text.translate(str.maketrans("", "", string.punctuation))
-#     tokens = text.split()
-#     filtered_tokens = [token for token in tokens if token not in _STOPWORDS]
-#     return " ".join(filtered_tokens)
 
 def text_normalize(text):
     return text
@@ -259,62 +235,3 @@ def default_compute_score(data_source, solution_str, ground_truth, extra_info=No
         return float(res) 
     else: 
         return float(res[0])
-
-
-if __name__ == "__main__":
-    ans = '''<think>
-Okay, let's tackle this question. The user is asking, "who annotated the dataset?" I need to check the provided references to find the answer.
-
-Looking at the first reference, it mentions the Event2Mind dataset, which is annotated for intent and reaction. The text says, "The Event2Mind dataset contains a large number of event phrases which are annotated for intent and reaction." So, the Event2Mind dataset itself was annotated. But the question is about the dataset used in the study, which might be the one they built using Event2Mind and their own queries. 
-
-Wait, the first paragraph of the first reference says they built their set of human activity queries from two sources: Event2Mind and their own surveys. Then, they mention that the Event2Mind dataset is annotated. However, the main dataset they're talking about in the study might be the one they created by using those queries. But the question is about who annotated the dataset. 
-
-In the first reference, the Event2Mind dataset is mentioned as a source, and it's stated that it's annotated. But the study's own dataset might not be annotated by the authors. However, the text doesn't explicitly say who annotated the Event2Mind dataset. The user's question is about the dataset in the study, which could be the one built using Event2Mind and their own queries. But the answer might be that the Event2Mind dataset was annotated, and the study's dataset might not have annotations. 
-
-Wait, the first reference says, "We build our set of human activity queries from two sources: the Event2Mind dataset BIBREF15 and a set of short activity surveys, which we collect ourselves, to obtain nearly 30K queries." So the Event2Mind dataset is a source, but the study's own dataset isn't mentioned as being annotated. The question is about the dataset they annotated. However, the text doesn't explicitly state who annotated the Event2Mind dataset. The answer might be that the Event2Mind dataset was annotated by its creators, but the study's dataset isn't annotated. However, the user's question is about the dataset in the study. 
-
-Wait, the first paragraph says that they used Event2Mind and their own surveys to create queries. The Event2Mind dataset is annotated, but the study's dataset might not be. The question is about who annotated the dataset. If the dataset in question is the one they built using the queries, then maybe they didn't annotate it. However, the text doesn't mention annotations for their dataset. But the first reference does mention that the Event2Mind dataset is annotated. However, the user's question might be referring to the dataset they created, which might not have annotations. 
-
-Alternatively, maybe the answer is that the Event2Mind dataset was annotated by its creators, and the study's dataset isn't annotated. But the question is about the dataset in the study. Wait, the first reference says that the Event2Mind dataset is annotated, but the study's dataset might not be. However, the user's question is about the dataset that was annotated. If the dataset in the study is the one built using Event2Mind and their own queries, then the annotations might come from Event2Mind. But the study's own dataset might not have annotations. 
-
-Hmm, the answer might be that the Event2Mind dataset was annotated, but the study's dataset isn't mentioned as being annotated. However, the user's question is about the dataset in the study. Since the first reference mentions that the Event2Mind dataset is annotated, but the study's dataset isn't, perhaps the answer is that the Event2Mind dataset was annotated by its creators, but the study's dataset isn't. However, the user's question might be referring to the dataset in the study, which isn't explicitly mentioned as being annotated. 
-
-Wait, the first reference says that the Event2Mind dataset is annotated for intent and reaction. The study's dataset might not be annotated. So the answer would be that the Event2Mind dataset was annotated, but the study's dataset isn't. However, the user's question is about the dataset they are referring to. Since the study's dataset isn't mentioned as being annotated, maybe the answer is that the Event2Mind dataset was annotated, and the study's dataset isn't. But the user's question is about the dataset in the study. 
-
-Alternatively, perhaps the answer is that the dataset was annotated by the authors. Wait, the first reference says that the Event2Mind dataset is annotated, but the study's dataset isn't. So the answer is that the Event2Mind dataset was annotated by its creators, and the study's dataset isn't. However, the user's question is about the dataset in the study. Since the study's dataset isn't mentioned as being annotated, the answer might be that the Event2Mind dataset was annotated, but the study's dataset isn't. 
-
-But the user's question is about the dataset in the study. The answer would be that the dataset was annotated by the authors. Wait, the first reference says that the Event2Mind dataset is annotated, but the study's dataset might not be. The text doesn't mention annotations for the study's dataset. So the answer is that the Event2Mind dataset was annotated, but the study's dataset isn't. Therefore, the answer is that the Event2Mind dataset was annotated by its creators, but the study's dataset isn't. However, the user's question is about the dataset in the study. 
-
-Alternatively, maybe the answer is that the authors annotated the dataset. But the text doesn't say that. The first reference mentions that the Event2Mind dataset is annotated, but the study's dataset isn't. So the answer is that the Event2Mind dataset was annotated, but the study's dataset isn't. Therefore, the answer is that the Event2Mind dataset was annotated by its creators, and the study's dataset isn't. But the user's question is about the dataset in the study. 
-
-Hmm, I think the answer is that the Event2Mind dataset was annotated, but the study's dataset isn't. However, the user's question might be referring to the dataset in the study, which isn't annotated. Therefore, the answer is that the dataset was not annotated, but the Event2Mind dataset was. However, the user's question is about the dataset in the study. 
-
-Wait, the first reference says that the Event2Mind dataset is annotated, and the study's dataset is built from that. So the study's dataset might not have annotations. Therefore, the answer is that the Event2Mind dataset was annotated, but the study's dataset isn't. However, the user's question is about the dataset in the study. 
-
-I think the answer is that the Event2Mind dataset was annotated, but the study's dataset isn't. Therefore, the answer is that the dataset was not annotated by the authors. But the user's question is about the dataset in the study. Since the study's dataset isn't mentioned as being annotated, the answer is that the dataset was not annotated. But the first reference mentions that the Event2Mind dataset is annotated. So the answer is that the Event2Mind dataset was annotated by its creators, and the study's dataset isn't. 
-
-But the user's question is about the dataset in the study. Therefore, the answer is that the dataset was not annotated. However, the first reference says that the Event2Mind dataset is annotated, but the study's dataset isn't. Therefore, the answer is that the dataset was not annotated. But the user's question might be referring to the Event2Mind dataset. 
-
-I'm a bit confused. Let me check again. The user's question is about the dataset. The first reference mentions that the Event2Mind dataset is annotated. The study's dataset is built using queries from Event2Mind and their own surveys. The study's dataset might not have annotations. Therefore, the answer is that the Event2Mind dataset was annotated, but the study's dataset isn't. However, the user's question is about the dataset in the study. So the answer is that the dataset was not annotated. 
-
-But the user's question is about the dataset. If the dataset in question is the one built by the study, then the answer is that it wasn't annotated. But the first reference mentions that the Event2Mind dataset is annotated. So the answer is that the Event2Mind dataset was annotated by its creators, and the study's dataset isn't. Therefore, the answer is that the dataset (Event2Mind) was annotated by its creators. But the user's question is about the dataset in the study. 
-
-Wait, the first reference says that the Event2Mind dataset is annotated, and the study's dataset is built from that. The study's dataset isn't mentioned as being annotated. Therefore, the answer is that the Event2Mind dataset was annotated, but the study's dataset isn't. Therefore, the answer to the user's question is that the dataset was not annotated. 
-
-But the user's question is about the dataset in the study. Therefore, the answer is that the dataset was not annotated. However, the first reference says that the Event2Mind dataset is annotated. So the answer is that the Event2Mind dataset was annotated by its creators, but the study's dataset isn't. Therefore, the answer is that the dataset (Event2Mind) was annotated by its creators. 
-
-But the user's question is about the dataset in the study. Therefore, the answer is that the dataset was not annotated. 
-
-Hmm, I think the answer is that the Event2Mind dataset was annotated, but the study's dataset isn't. Therefore, the answer is that the dataset was not annotated. However, the user's question might be referring to the Event2Mind dataset. 
-
-Alternatively, the answer is that the dataset was annotated by the authors. But the text doesn't mention that
-'''
-    from utils import read_parquet
-    path = "data/merged/0829-QASPER-soft_deduplicated-0.4.parquet"
-    data = read_parquet(path)
-    data = data[:5]
-    print(len(data))
-    for item in data:
-        gt = item["reward_model"]["ground_truth"]
-        reward = default_compute_score("QASPER", ans, gt)
-        print(reward)
