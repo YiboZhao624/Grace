@@ -7,15 +7,6 @@ import urllib3
 # 禁用SSL警告
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-documents = [
-    "Reranking is fun!",
-    "The capital of France is Paris",
-    "vLLM is an open-source framework for fast AI serving",
-]
-
-query = "What is the capital of France?"
-
-model = "/root/shared_planing/LLM_model/Qwen3-Embedding-0.6B"
 
 def vllm_retrieve(base_url: str, model: str, documents: Union[list[str], str]) -> dict:
     if isinstance(documents, str):
@@ -55,7 +46,7 @@ def vllm_llm(base_url: str, model: str, prompt: str):
 
 if __name__ == "__main__":
     base_url = f"http://localhost:8001"
-    model  = "/root/shared_planing/LLM_model/Qwen3-Embedding-0.6B"
+    model  = "/root/path/to/Qwen3-Embedding-0.6B"
     documents = [
         "Reranking is fun!",
         "The capital of France is Paris",
@@ -65,11 +56,11 @@ if __name__ == "__main__":
     res = vllm_retrieve(base_url, model, documents)
     print(res)
     base_url = f"http://localhost:8002"
-    model = "/root/shared_planing/LLM_model/BAAI-bge-reranker-v2-m3/"
+    model = "/root/path/to/BAAI-bge-reranker-v2-m3/"
     res = vllm_rerank(base_url, model, query, documents)
     print(res)
     base_url = f"http://localhost:8003" 
-    model = "/root/shared_planing/LLM_model/Qwen2.5-7B-Instruct"
+    model = "/root/path/to/Qwen2.5-7B-Instruct"
     prompt = "What is the capital of France?"
     res = vllm_llm(base_url, model, prompt)
     print(res)
