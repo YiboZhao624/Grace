@@ -17,7 +17,7 @@ class RetrieverConfig:
     k1: float = 1.5
     b: float = 0.75
     # sentence-transformer parameters
-    model_name: str = "/root/shared_planing/LLM_model/Qwen3-Embedding-0.6B"
+    model_name: str = "/root/path/to/Qwen3-Embedding-0.6B"
     device: str = "cuda:7"
     # vLLM parameters, model_name is shared with sentence-transformer.
     base_url: str = "http://localhost:8000"
@@ -28,7 +28,7 @@ class RetrieverConfig:
 class ChunkerConfig:
     chunking_strategy: Literal["greedy_sentence", "greedy_paragraph", "token", "sentence", "paragraph"] = "token"
     # TokenChunker parameters:
-    model_name: str = "/root/shared_planing/LLM_model/Qwen3-Embedding-4B"
+    model_name: str = "/root/path/to/Qwen3-Embedding-4B"
     max_length: int = 512
     overlap: int = 64
 
@@ -37,7 +37,7 @@ class RerankerConfig:
     # the configs for initializing the reranker. We only support vLLM for now.
     # To support transformers-based reranker, please modify the reranker.py file.
     reranker_type: str = "vllm"
-    model_name: str = "/root/shared_planing/LLM_model/BAAI-bge-reranker-v2-m3/"
+    model_name: str = "/root/path/to/BAAI-bge-reranker-v2-m3/"
     device: str = "cuda:7"
     base_url: str = "http://localhost:8000"
 
@@ -119,7 +119,7 @@ class DataGeneratorConfig:
 @dataclass
 class LLMConfig:
     # compatible with vLLM and GPT, for GPT, the url is not used as we deployed the openai package.
-    model_name: str = "/root/shared_planing/LLM_model/Qwen3-8B"
+    model_name: str = "/root/path/to/Qwen3-8B"
     url: str = "http://localhost:8003"
 
 
