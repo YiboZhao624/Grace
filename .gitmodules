@@ -1,1 +1,6 @@
-
+[submodule "baselines/ICLR24_SuRe_reproduce"]
+	path = baselines/ICLR24_SuRe_reproduce
+	url = https://github.com/YiboZhao624/ICLR24_SuRe_reproduce
+[submodule "baselines/ARENA_reproduce"]
+	path = baselines/ARENA_reproduce
+	url = https://github.com/YiboZhao624/ARENA_reproduce
